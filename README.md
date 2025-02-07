@@ -1,0 +1,1 @@
+# Scrypted OSD manager
