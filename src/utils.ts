@@ -45,9 +45,18 @@ export type OnUpdateOverlayFn = (props: {
     plugin: OsdManagerProvider
 }) => Promise<void>
 
-export function getFriendlyTitle(rawTitle: string): string {
-    return rawTitle
-        .replace(/^table\.VideoWidget\[\d+\]\./, '');
+export const getFriendlyTitle = (props: {
+    rawTitle: string,
+    device: ScryptedDeviceBase,
+    plugin: OsdManagerProvider
+}) => {
+    const { device, plugin, rawTitle } = props;
+    if (device.providerId === plugin.amcrestProviderId) {
+        return rawTitle
+            .replace(/^table\.VideoWidget\[\d+\]\./, '');
+    } else {
+        return `Overlay ${rawTitle}`;
+    }
 }
 
 export const getOverlayKeys = (overlayId: string) => {
@@ -70,14 +79,20 @@ export const getOverlayKeys = (overlayId: string) => {
 
 export const getOverlaySettings = (props: {
     storage: StorageSettings<any>,
-    overlays: CameraOverlay[]
+    overlays: CameraOverlay[],
+    plugin: OsdManagerProvider,
+    device: ScryptedDeviceBase,
 }) => {
-    const { storage, overlays } = props;
+    const { storage, overlays, device, plugin } = props;
     const settings: Setting[] = [];
 
     for (const overlay of overlays) {
         const rawTitle = `${overlay.id}`;
-        const friendlyTitle = getFriendlyTitle(rawTitle);
+        const friendlyTitle = getFriendlyTitle({
+            rawTitle,
+            device,
+            plugin,
+        });
         const overlayName = friendlyTitle;
 
         const { currentTextKey, deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlay.id);
@@ -325,19 +340,24 @@ export const parseOverlayData = (props: {
     const { regex, text, device, maxDecimals } = overlay;
     const realDevice = device ? sdk.systemManager.getDeviceById<SupportedDevice>(device) : undefined;
 
+    const formatValue = (value: any) => {
+        const factor = Math.pow(10, maxDecimals);
+        return Math.round(Number(value ?? 0) * factor) / factor;
+    };
+
     let value;
     let unit;
     let textToUpdate = text;
     if (listenerType === ListenerType.Face) {
         value = (data as ObjectsDetected)?.detections?.find(det => det.className === 'face')?.label;
     } else if (listenerType === ListenerType.Temperature) {
-        value = Number(data ?? 0)?.toFixed(maxDecimals);
+        value = formatValue(data);
         unit = realDevice.temperatureUnit;
     } else if (listenerType === ListenerType.Humidity) {
-        value = Number(data ?? 0)?.toFixed(maxDecimals);
+        value = formatValue(data);
         unit = '%';
     } else if (listenerType === ListenerType.Battery) {
-        value = Number(data ?? 0)?.toFixed(maxDecimals);
+        value = formatValue(data);
         unit = '%';
     } else if (listenerType === ListenerType.Lock) {
         textToUpdate = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.unlockText;

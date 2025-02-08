@@ -46,7 +46,12 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     async getMixinSettings(): Promise<Setting[]> {
         const settings = await this.storageSettings.getSettings();
 
-        settings.push(...getOverlaySettings({ storage: this.storageSettings, overlays: this.overlays }));
+        settings.push(...getOverlaySettings({ 
+            storage: this.storageSettings, 
+            overlays: this.overlays,
+            device: this.mixinDevice,
+            plugin: this.plugin 
+        }));
 
         return settings;
     }
