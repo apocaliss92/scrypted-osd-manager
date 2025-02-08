@@ -69,6 +69,14 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         ...overlay,
                     }
                 });
+
+            const deviceSettings = await this.getMixinSettings();
+            for (const overlay of this.overlays) {
+                const { currentText } = getOverlay({ overlayId: overlay.id, settings: deviceSettings });
+                const { currentTextKey } = getOverlayKeys(overlay.id);
+
+                await this.putMixinSetting(currentTextKey, currentText);
+            }
         } catch (e) {
             this.console.error('Error inr getOverlayData', e);
         }
@@ -132,6 +140,8 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         try {
             const funct = async () => {
                 try {
+                    await this.getOverlayData();
+
                     listenersIntevalFn({
                         console: this.console,
                         currentListeners: this.listenersMap,
@@ -141,7 +151,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         settings: await this.getSettings(),
                         plugin: this.plugin
                     });
-                    await this.getOverlayData();
                 } catch (e) {
                     this.console.error('Error in init interval', e);
                 }

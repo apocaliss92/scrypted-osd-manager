@@ -16,6 +16,7 @@ export enum OverlayType {
 }
 
 interface Overlay {
+    currentText: string;
     text: string;
     type: OverlayType;
     device: string;
@@ -43,6 +44,7 @@ export type OnUpdateOverlayFn = (props: {
 }) => Promise<void>
 
 export const getOverlayKeys = (overlayId: string) => {
+    const currentTextKey = `overlay:${overlayId}:currentText`;
     const textKey = `overlay:${overlayId}:text`;
     const typeKey = `overlay:${overlayId}:type`;
     const regexKey = `overlay:${overlayId}:regex`;
@@ -50,6 +52,7 @@ export const getOverlayKeys = (overlayId: string) => {
     const maxDecimalsKey = `overlay:${overlayId}:maxDecimals`;
 
     return {
+        currentTextKey,
         textKey,
         typeKey,
         regexKey,
@@ -69,10 +72,11 @@ export const getOverlaySettings = (props: {
         const overlayId = overlay.id;
         const overlayName = `Overlay ${overlayId}`;
 
-        const { deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlayId);
+        const { currentTextKey, deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlayId);
 
         settings.push(
             {
+                key: currentTextKey,
                 title: 'Current content',
                 type: 'string',
                 subgroup: overlayName,
@@ -169,8 +173,9 @@ export const getOverlay = (props: {
         [curr.key]: curr
     }), {});
 
-    const { deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlayId);
+    const { currentTextKey, deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlayId);
 
+    const currentText = settingsByKey[`${osdManagerPrefix}:${currentTextKey}`]?.value;
     const type = settingsByKey[`${osdManagerPrefix}:${typeKey}`]?.value ?? OverlayType.Text;
     const device = settingsByKey[`${osdManagerPrefix}:${deviceKey}`]?.value;
     const text = settingsByKey[`${osdManagerPrefix}:${textKey}`]?.value;
@@ -178,6 +183,7 @@ export const getOverlay = (props: {
     const maxDecimals = settingsByKey[`${osdManagerPrefix}:${maxDecimalsKey}`]?.value;
 
     return {
+        currentText,
         device,
         type,
         regex,
