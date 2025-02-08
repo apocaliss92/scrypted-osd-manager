@@ -1,12 +1,14 @@
-import sdk, { EventListenerRegister, HumiditySensor, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer } from "@scrypted/sdk";
+import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer } from "@scrypted/sdk";
 import { StorageSettings } from "@scrypted/sdk/storage-settings";
+import OsdManagerProvider from "./main";
 
-export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}'].some(elem => interfaces.includes(elem))`;
+export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}','${ScryptedInterface.Lock}'].some(elem => interfaces.includes(elem))`;
 export const pluginEnabledFilter = `interfaces.includes('${ScryptedInterface.VideoTextOverlays}')`;
 export const osdManagerPrefix = 'osdManager';
 
-export type SupportedDevice = ScryptedDeviceBase & (Thermometer | HumiditySensor);
+export type SupportedDevice = ScryptedDeviceBase & (Thermometer | HumiditySensor | Lock);
 export enum OverlayType {
+    Disabled = 'Disabled',
     Text = 'Text',
     Device = 'Device',
     FaceDetection = 'FaceDetection',
@@ -24,6 +26,7 @@ export enum ListenerType {
     Face = 'Face',
     Humidity = 'Humidity',
     Temperature = 'Temperature',
+    Lock = 'Lock',
 }
 
 export type ListenersMap = Record<string, { listenerType: ListenerType, listener: EventListenerRegister, device?: string }>;
@@ -35,6 +38,7 @@ export type OnUpdateOverlayFn = (props: {
     data: any,
     device?: ScryptedDeviceBase,
     noLog?: boolean,
+    plugin: OsdManagerProvider
 }) => Promise<void>
 
 export const getOverlayKeys = (overlayId: string) => {
@@ -72,12 +76,16 @@ export const getOverlaySettings = (props: {
                 key: typeKey,
                 title: 'Overlay type',
                 type: 'string',
-                choices: [OverlayType.Text, OverlayType.Device, OverlayType.FaceDetection],
+                choices: Object.values(OverlayType),
                 subgroup: overlayName,
                 value: type,
                 immediate: true,
             }
         );
+
+        if (type === OverlayType.Disabled) {
+            continue;
+        }
 
         if (type === OverlayType.Text) {
             settings.push({
@@ -161,8 +169,9 @@ export const listenersIntevalFn = (props: {
     id: string,
     currentListeners: ListenersMap,
     onUpdateFn: OnUpdateOverlayFn,
+    plugin: OsdManagerProvider
 }) => {
-    const { overlayIds, settings, console, id, currentListeners, onUpdateFn } = props;
+    const { overlayIds, settings, console, id, currentListeners, onUpdateFn, plugin } = props;
 
     for (const overlayId of overlayIds) {
         const overlay = getOverlay({
@@ -184,6 +193,10 @@ export const listenersIntevalFn = (props: {
                 } else if (realDevice.interfaces.includes(ScryptedInterface.HumiditySensor)) {
                     listenerType = ListenerType.Humidity;
                     listenInterface = ScryptedInterface.HumiditySensor;
+                    deviceId = overlay.device;
+                } else if (realDevice.interfaces.includes(ScryptedInterface.Lock)) {
+                    listenerType = ListenerType.Lock;
+                    listenInterface = ScryptedInterface.Lock;
                     deviceId = overlay.device;
                 }
             } else {
@@ -209,7 +222,8 @@ export const listenersIntevalFn = (props: {
                     overlayId,
                     data,
                     listenerType,
-                    device: realDevice
+                    device: realDevice,
+                    plugin
                 });
                 const newListener = realDevice.listen(listenInterface, async (_, __, data) => {
                     await update(data);
@@ -219,6 +233,8 @@ export const listenersIntevalFn = (props: {
                     update(realDevice.temperature);
                 } else if (listenInterface === ScryptedInterface.HumiditySensor) {
                     update(realDevice.humidity);
+                } else if (listenInterface === ScryptedInterface.Lock) {
+                    update(realDevice.lockState);
                 }
 
                 currentListeners[overlayId] = {
@@ -233,7 +249,17 @@ export const listenersIntevalFn = (props: {
                 overlayId,
                 listenerType,
                 data: overlay.text,
-                noLog: true
+                noLog: true,
+                plugin
+            });
+        } else if (overlayType === OverlayType.Disabled) {
+            currentListener?.listener && currentListener.listener.removeListener();
+            onUpdateFn({
+                overlayId,
+                listenerType,
+                data: '',
+                noLog: true,
+                plugin
             });
         }
     }
@@ -243,8 +269,9 @@ export const parseOverlayData = (props: {
     listenerType: ListenerType,
     data: any,
     overlay: Overlay,
+    plugin: OsdManagerProvider
 }) => {
-    const { listenerType, data, overlay } = props;
+    const { listenerType, data, overlay, plugin } = props;
     const { regex, text, device, maxDecimals } = overlay;
     const realDevice = device ? sdk.systemManager.getDeviceById<SupportedDevice>(device) : undefined;
 
@@ -259,6 +286,8 @@ export const parseOverlayData = (props: {
     } else if (listenerType === ListenerType.Humidity) {
         value = Number(data ?? 0)?.toFixed(maxDecimals);
         unit = '%';
+    } else if (listenerType === ListenerType.Lock) {
+        textToUpdate = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.lockText;
     }
 
     if (value) {

@@ -2,7 +2,7 @@ import sdk, { Setting, Settings, VideoTextOverlay, VideoTextOverlays } from "@sc
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
-import { getOverlayKeys, getOverlay, getOverlaySettings, pluginEnabledFilter, ListenersMap, OnUpdateOverlayFn, listenersIntevalFn, parseOverlayData } from "./utils";
+import { getOverlayKeys, getOverlay, getOverlaySettings, pluginEnabledFilter, ListenersMap, OnUpdateOverlayFn, listenersIntevalFn, parseOverlayData, OverlayType } from "./utils";
 
 export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implements Settings {
     killed: boolean;
@@ -108,10 +108,13 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         try {
             const settings = await this.getSettings();
             const overlay = getOverlay({ overlayId, settings });
-            const textToUpdate = parseOverlayData({ data, listenerType, overlay });
+            const textToUpdate = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin });
 
             if (textToUpdate) {
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: textToUpdate });
+            } else if (overlay.type === OverlayType.Disabled) {
+                // await this.cameraDevice.setVideoTextOverlay(overlayId, { text: '' });
+                await this.cameraDevice.setVideoTextOverlay(overlayId, { text: false });
             }
         } catch (e) {
             this.console.error('Error in updateOverlayData', e);
@@ -130,7 +133,8 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         id: this.id,
                         onUpdateFn: this.updateOverlayData,
                         overlayIds: this.overlayIds,
-                        settings: await this.getSettings()
+                        settings: await this.getSettings(),
+                        plugin: this.plugin
                     });
                     await this.getOverlayData();
                 } catch (e) {

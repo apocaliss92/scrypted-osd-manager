@@ -1,9 +1,9 @@
 {
-  "name": "@scrypted/osd-manager",
+  "name": "@apocaliss92/osd-manager",
   "description": "Scrypted plugin to manage cameras OSD",
   "repository": {
     "type": "git",
-    "url": "https://github.com/scryptedapp/osd-manager"
+    "url": "https://github.com/apocaliss92/scrypted-osd-manager.git"
   },
   "version": "0.0.1",
   "scripts": {
