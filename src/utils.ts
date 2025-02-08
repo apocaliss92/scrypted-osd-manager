@@ -13,6 +13,7 @@ export enum OverlayType {
     Text = 'Text',
     Device = 'Device',
     FaceDetection = 'FaceDetection',
+    BatteryLeft = 'BatteryLeft',
 }
 
 interface Overlay {
@@ -29,6 +30,7 @@ export enum ListenerType {
     Humidity = 'Humidity',
     Temperature = 'Temperature',
     Lock = 'Lock',
+    Battery = 'Battery',
 }
 
 export type ListenersMap = Record<string, { listenerType: ListenerType, listener: EventListenerRegister, device?: string }>;
@@ -134,6 +136,13 @@ export const getOverlaySettings = (props: {
             placeholder: '${value} ${unit}',
             value: storage.getItem(regexKey) || '${value} ${unit}',
         };
+        const precisionSetting: Setting = {
+            key: maxDecimalsKey,
+            title: 'Max decimals',
+            type: 'number',
+            subgroup: overlayName,
+            value: storage.getItem(maxDecimalsKey) ?? 1
+        };
 
         if (type === OverlayType.Device) {
             settings.push(
@@ -147,16 +156,12 @@ export const getOverlaySettings = (props: {
                     value: storage.getItem(deviceKey)
                 },
                 regexSetting,
-                {
-                    key: maxDecimalsKey,
-                    title: 'Max decimals',
-                    type: 'number',
-                    subgroup: overlayName,
-                    value: storage.getItem(maxDecimalsKey) ?? 1
-                },
+                precisionSetting,
             );
         } else if (type === OverlayType.FaceDetection) {
             settings.push(regexSetting);
+        } else if (type === OverlayType.BatteryLeft) {
+            settings.push(regexSetting, precisionSetting);
         }
     }
 
@@ -237,6 +242,10 @@ export const listenersIntevalFn = (props: {
             listenerType = ListenerType.Face;
             listenInterface = ScryptedInterface.ObjectDetection;
             deviceId = id;
+        } else if (overlayType === OverlayType.BatteryLeft) {
+            listenerType = ListenerType.Battery;
+            listenInterface = ScryptedInterface.Battery;
+            deviceId = id;
         }
 
         const currentListener = currentListeners[overlayId];
@@ -266,6 +275,8 @@ export const listenersIntevalFn = (props: {
                     update(realDevice.humidity);
                 } else if (listenInterface === ScryptedInterface.Lock) {
                     update(realDevice.lockState);
+                } else if (listenInterface === ScryptedInterface.Battery) {
+                    update(realDevice.batteryLevel);
                 } else if (listenInterface === ScryptedInterface.ObjectDetection) {
                     update({ detections: [{ className: 'face', label: '-' }] } as ObjectsDetected);
                 }
@@ -317,6 +328,9 @@ export const parseOverlayData = (props: {
         value = Number(data ?? 0)?.toFixed(maxDecimals);
         unit = realDevice.temperatureUnit;
     } else if (listenerType === ListenerType.Humidity) {
+        value = Number(data ?? 0)?.toFixed(maxDecimals);
+        unit = '%';
+    } else if (listenerType === ListenerType.Battery) {
         value = Number(data ?? 0)?.toFixed(maxDecimals);
         unit = '%';
     } else if (listenerType === ListenerType.Lock) {

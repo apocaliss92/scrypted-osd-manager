@@ -1,4 +1,4 @@
-import sdk, { Setting, Settings, VideoTextOverlay, VideoTextOverlays } from "@scrypted/sdk";
+import sdk, { Battery, Setting, Settings, Sleep, VideoTextOverlay, VideoTextOverlays } from "@scrypted/sdk";
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
@@ -9,7 +9,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     overlays: CameraOverlay[] = [];
     listenersMap: ListenersMap = {};
     checkInterval: NodeJS.Timeout;
-    cameraDevice: VideoTextOverlays & Settings;
+    cameraDevice: VideoTextOverlays & Settings & Sleep & Battery;
 
     storageSettings = new StorageSettings(this, {
         duplicateFromDevice: {
@@ -61,6 +61,10 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
 
     async getOverlayData() {
         try {
+            if (this.cameraDevice.sleeping) {
+                return;
+            }
+
             const textOverlays = await this.cameraDevice.getVideoTextOverlays();
             this.overlays = Object.entries(textOverlays)
                 .map(([id, overlay]) => {
@@ -111,6 +115,10 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
 
     private updateOverlayData: OnUpdateOverlayFn = async (props) => {
         const { overlayId, listenerType, data, device, noLog } = props;
+        if (this.cameraDevice.sleeping) {
+            return;
+        }
+
         if (!noLog) {
             this.console.log(`Update received from device ${device?.name} ${JSON.stringify({
                 overlayId,
@@ -125,6 +133,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             const textToUpdate = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin });
 
             if (textToUpdate) {
+                await this.cameraDevice.setVideoTextOverlay(overlayId, { text: true });
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: textToUpdate });
             } else if (overlay.type === OverlayType.Disabled) {
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: false });
