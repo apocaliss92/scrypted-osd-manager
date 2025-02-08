@@ -133,7 +133,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             const textToUpdate = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin });
 
             if (textToUpdate) {
-                await this.cameraDevice.setVideoTextOverlay(overlayId, { text: true });
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: textToUpdate });
             } else if (overlay.type === OverlayType.Disabled) {
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: false });
