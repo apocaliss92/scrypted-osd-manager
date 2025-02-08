@@ -340,7 +340,7 @@ export const parseOverlayData = (props: {
         value = Number(data ?? 0)?.toFixed(maxDecimals);
         unit = '%';
     } else if (listenerType === ListenerType.Lock) {
-        textToUpdate = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.lockText;
+        textToUpdate = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.unlockText;
     }
 
     if (value) {
