@@ -45,10 +45,9 @@ export type OnUpdateOverlayFn = (props: {
     plugin: OsdManagerProvider
 }) => Promise<void>
 
-export function getFriendlyTitle(rawTitle: string): string {
-    return rawTitle
-        .replace(/^table\.VideoWidget\[\d+\]\./, '');
-}
+export const getFriendlyTitle = (rawTitle: string) =>
+    rawTitle
+        .replace(/^table\.VideoWidget\[\d+\]\./, '')
 
 export const getOverlayKeys = (overlayId: string) => {
     const currentTextKey = `overlay:${overlayId}:currentText`;
