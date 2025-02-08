@@ -2,11 +2,11 @@ import sdk, { Setting, Settings, VideoTextOverlay, VideoTextOverlays } from "@sc
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
-import { getOverlayKeys, getOverlay, getOverlaySettings, pluginEnabledFilter, ListenersMap, OnUpdateOverlayFn, listenersIntevalFn, parseOverlayData, OverlayType } from "./utils";
+import { getOverlayKeys, getOverlay, getOverlaySettings, pluginEnabledFilter, ListenersMap, OnUpdateOverlayFn, listenersIntevalFn, parseOverlayData, OverlayType, CameraOverlay } from "./utils";
 
 export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implements Settings {
     killed: boolean;
-    overlayIds: string[] = [];
+    overlays: CameraOverlay[] = [];
     listenersMap: ListenersMap = {};
     checkInterval: NodeJS.Timeout;
     cameraDevice: VideoTextOverlays & Settings;
@@ -46,7 +46,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     async getMixinSettings(): Promise<Setting[]> {
         const settings = await this.storageSettings.getSettings();
 
-        settings.push(...getOverlaySettings({ storage: this.storageSettings, overlayIds: this.overlayIds }));
+        settings.push(...getOverlaySettings({ storage: this.storageSettings, overlays: this.overlays }));
 
         return settings;
     }
@@ -62,7 +62,13 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     async getOverlayData() {
         try {
             const textOverlays = await this.cameraDevice.getVideoTextOverlays();
-            this.overlayIds = Object.entries(textOverlays).filter(([_, { readonly }]) => !readonly).map(([id]) => id);
+            this.overlays = Object.entries(textOverlays)
+                .map(([id, overlay]) => {
+                    return {
+                        id,
+                        ...overlay,
+                    }
+                });
         } catch (e) {
             this.console.error('Error inr getOverlayData', e);
         }
@@ -77,7 +83,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 const textOverlaysToDuplicate = await deviceToDuplicate.getVideoTextOverlays();
 
                 for (const [overlayId, data] of Object.entries(textOverlaysToDuplicate)) {
-                    if (!this.overlayIds.includes(overlayId)) {
+                    if (!this.overlays.some(overlay => overlayId === overlay.id)) {
                         continue;
                     }
 
@@ -113,7 +119,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             if (textToUpdate) {
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: textToUpdate });
             } else if (overlay.type === OverlayType.Disabled) {
-                // await this.cameraDevice.setVideoTextOverlay(overlayId, { text: '' });
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: false });
             }
         } catch (e) {
@@ -132,7 +137,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         currentListeners: this.listenersMap,
                         id: this.id,
                         onUpdateFn: this.updateOverlayData,
-                        overlayIds: this.overlayIds,
+                        overlays: this.overlays,
                         settings: await this.getSettings(),
                         plugin: this.plugin
                     });

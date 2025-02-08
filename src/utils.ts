@@ -1,4 +1,4 @@
-import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer } from "@scrypted/sdk";
+import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
 import { StorageSettings } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
 
@@ -6,6 +6,7 @@ export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInte
 export const pluginEnabledFilter = `interfaces.includes('${ScryptedInterface.VideoTextOverlays}')`;
 export const osdManagerPrefix = 'osdManager';
 
+export type CameraOverlay = VideoTextOverlay & { id: string };
 export type SupportedDevice = ScryptedDeviceBase & (Thermometer | HumiditySensor | Lock);
 export enum OverlayType {
     Disabled = 'Disabled',
@@ -59,16 +60,37 @@ export const getOverlayKeys = (overlayId: string) => {
 
 export const getOverlaySettings = (props: {
     storage: StorageSettings<any>,
-    overlayIds: string[]
+    overlays: CameraOverlay[]
 }) => {
-    const { storage, overlayIds } = props;
+    const { storage, overlays } = props;
     const settings: Setting[] = [];
 
-    for (const overlayId of overlayIds) {
+    for (const overlay of overlays) {
+        const overlayId = overlay.id;
         const overlayName = `Overlay ${overlayId}`;
 
         const { deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlayId);
 
+        if (overlay.readonly) {
+            settings.push(
+                {
+                    title: 'Readonly',
+                    type: 'boolean',
+                    subgroup: overlayName,
+                    value: true,
+                    readonly: true,
+                },
+                {
+                    title: 'Text',
+                    type: 'string',
+                    subgroup: overlayName,
+                    value: overlay.text,
+                    readonly: true,
+                }
+            );
+
+            continue;
+        }
         const type = storage.getItem(typeKey) ?? OverlayType.Text;
 
         settings.push(
@@ -163,7 +185,7 @@ export const getOverlay = (props: {
 }
 
 export const listenersIntevalFn = (props: {
-    overlayIds: string[],
+    overlays: CameraOverlay[],
     settings: Setting[],
     console: Console,
     id: string,
@@ -171,9 +193,10 @@ export const listenersIntevalFn = (props: {
     onUpdateFn: OnUpdateOverlayFn,
     plugin: OsdManagerProvider
 }) => {
-    const { overlayIds, settings, console, id, currentListeners, onUpdateFn, plugin } = props;
+    const { overlays, settings, console, id, currentListeners, onUpdateFn, plugin } = props;
 
-    for (const overlayId of overlayIds) {
+    for (const cameraOverlay of overlays) {
+        const overlayId = cameraOverlay.id;
         const overlay = getOverlay({
             overlayId,
             settings
@@ -235,6 +258,8 @@ export const listenersIntevalFn = (props: {
                     update(realDevice.humidity);
                 } else if (listenInterface === ScryptedInterface.Lock) {
                     update(realDevice.lockState);
+                } else if (listenInterface === ScryptedInterface.ObjectDetection) {
+                    update({ detections: [{ className: 'face', label: '-' }] } as ObjectsDetected);
                 }
 
                 currentListeners[overlayId] = {

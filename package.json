@@ -1,5 +1,5 @@
 {
-  "name": "@apocaliss92/osd-manager",
+  "name": "@apocaliss92/scrypted-osd-manager",
   "description": "Scrypted plugin to manage cameras OSD",
   "repository": {
     "type": "git",
