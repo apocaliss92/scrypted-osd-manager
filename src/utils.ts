@@ -71,6 +71,15 @@ export const getOverlaySettings = (props: {
 
         const { deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlayId);
 
+        settings.push(
+            {
+                title: 'Current content',
+                type: 'string',
+                subgroup: overlayName,
+                value: overlay.text,
+                readonly: true,
+            }
+        )
         if (overlay.readonly) {
             settings.push(
                 {
@@ -78,13 +87,6 @@ export const getOverlaySettings = (props: {
                     type: 'boolean',
                     subgroup: overlayName,
                     value: true,
-                    readonly: true,
-                },
-                {
-                    title: 'Text',
-                    type: 'string',
-                    subgroup: overlayName,
-                    value: overlay.text,
                     readonly: true,
                 }
             );
