@@ -45,6 +45,11 @@ export type OnUpdateOverlayFn = (props: {
     plugin: OsdManagerProvider
 }) => Promise<void>
 
+export function getFriendlyTitle(rawTitle: string): string {
+    return rawTitle
+        .replace(/^table\.VideoWidget\[\d+\]\./, '');
+}
+
 export const getOverlayKeys = (overlayId: string) => {
     const currentTextKey = `overlay:${overlayId}:currentText`;
     const textKey = `overlay:${overlayId}:text`;
@@ -71,15 +76,16 @@ export const getOverlaySettings = (props: {
     const settings: Setting[] = [];
 
     for (const overlay of overlays) {
-        const overlayId = overlay.id;
-        const overlayName = `Overlay ${overlayId}`;
+        const rawTitle = `${overlay.id}`;
+        const friendlyTitle = getFriendlyTitle(rawTitle);
+        const overlayName = friendlyTitle;
 
-        const { currentTextKey, deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlayId);
+        const { currentTextKey, deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlay.id);
 
         settings.push(
             {
                 key: currentTextKey,
-                title: 'Current content',
+                title: 'Current Content',
                 type: 'string',
                 subgroup: overlayName,
                 value: overlay.text,
@@ -104,7 +110,7 @@ export const getOverlaySettings = (props: {
         settings.push(
             {
                 key: typeKey,
-                title: 'Overlay type',
+                title: 'Overlay Type',
                 type: 'string',
                 choices: Object.values(OverlayType),
                 subgroup: overlayName,
@@ -129,7 +135,7 @@ export const getOverlaySettings = (props: {
 
         const regexSetting: Setting = {
             key: regexKey,
-            title: 'Value regex',
+            title: 'Value Regex',
             description: 'Expression to generate the text. ${value} contains the value and ${unit} the unit',
             type: 'string',
             subgroup: overlayName,
@@ -138,7 +144,7 @@ export const getOverlaySettings = (props: {
         };
         const precisionSetting: Setting = {
             key: maxDecimalsKey,
-            title: 'Max decimals',
+            title: 'Max Decimals',
             type: 'number',
             subgroup: overlayName,
             value: storage.getItem(maxDecimalsKey) ?? 1

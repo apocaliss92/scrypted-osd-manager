@@ -23,10 +23,13 @@
     "scrypted",
     "plugin",
     "hikvision",
-    "videoclips"
+    "videoclips",
+    "amcrest",
+    "dahua",
+    "reolink"
   ],
   "scrypted": {
-    "name": "OSD manager",
+    "name": "OSD Manager",
     "type": "API",
     "interfaces": [
       "Settings",
