@@ -1,15 +1,17 @@
-import sdk, { Battery, Setting, Settings, Sleep, VideoTextOverlay, VideoTextOverlays } from "@scrypted/sdk";
+import sdk, { Battery, ScryptedDeviceBase, Setting, Settings, Sleep, VideoTextOverlays } from "@scrypted/sdk";
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
-import { getOverlayKeys, getOverlay, getOverlaySettings, pluginEnabledFilter, ListenersMap, OnUpdateOverlayFn, listenersIntevalFn, parseOverlayData, OverlayType, CameraOverlay } from "./utils";
+import { CameraOverlay, ListenersMap, OnUpdateOverlayFn, OverlayType, getOverlay, getOverlayKeys, getOverlaySettings, listenersIntevalFn, parseOverlayData, pluginEnabledFilter } from "./utils";
+
+export type CameraType = ScryptedDeviceBase & VideoTextOverlays & Settings & Sleep & Battery;
 
 export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implements Settings {
     killed: boolean;
     overlays: CameraOverlay[] = [];
     listenersMap: ListenersMap = {};
     checkInterval: NodeJS.Timeout;
-    cameraDevice: VideoTextOverlays & Settings & Sleep & Battery;
+    cameraDevice: CameraType;
 
     storageSettings = new StorageSettings(this, {
         duplicateFromDevice: {
@@ -25,7 +27,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         super(options);
 
         this.plugin.mixinsMap[this.id] = this;
-        this.cameraDevice = sdk.systemManager.getDeviceById<VideoTextOverlays & Settings>(this.id);
+        this.cameraDevice = sdk.systemManager.getDeviceById<CameraType>(this.id);
         setTimeout(async () => !this.killed && await this.init(), 2000);
     }
 
@@ -47,11 +49,10 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     async getMixinSettings(): Promise<Setting[]> {
         const settings = await this.storageSettings.getSettings();
 
-        settings.push(...getOverlaySettings({ 
-            storage: this.storageSettings, 
+        settings.push(...getOverlaySettings({
+            storage: this.storageSettings,
             overlays: this.overlays,
             device: this.cameraDevice,
-            plugin: this.plugin 
         }));
 
         return settings;
@@ -149,7 +150,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     }
 
     async init() {
-         try {
+        try {
             const funct = async () => {
                 try {
                     await this.getOverlayData();

@@ -1,5 +1,6 @@
-import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, Entry, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
+import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
 import { StorageSettings } from "@scrypted/sdk/storage-settings";
+import { CameraType } from "./cameraMixin";
 import OsdManagerProvider from "./main";
 
 export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}','${ScryptedInterface.Lock}','${ScryptedInterface.EntrySensor}'].some(elem => interfaces.includes(elem))`;
@@ -80,8 +81,7 @@ export const getOverlayKeys = (overlayId: string) => {
 export const getOverlaySettings = (props: {
     storage: StorageSettings<any>,
     overlays: CameraOverlay[],
-    plugin: OsdManagerProvider,
-    device: ScryptedDeviceBase,
+    device: CameraType,
 }) => {
     const { storage, overlays, device } = props;
     const settings: Setting[] = [];
@@ -369,7 +369,7 @@ export const parseOverlayData = (props: {
     } else if (listenerType === ListenerType.Entry) {
         textToUpdate = data ? plugin.storageSettings.values.closedText : plugin.storageSettings.values.openText;
     }
-        
+
 
     if (value) {
         textToUpdate = regex
