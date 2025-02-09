@@ -1,4 +1,4 @@
-import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
+import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, TemperatureUnit, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
 import { StorageSetting, StorageSettings, StorageSettingsDevice, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
 import { CameraType } from "./cameraMixin";
 import OsdManagerProvider from "./main";
@@ -227,8 +227,13 @@ export const parseOverlayData = (props: {
     if (listenerType === ListenerType.Face) {
         value = (data as ObjectsDetected)?.detections?.find(det => det.className === 'face')?.label;
     } else if (listenerType === ListenerType.Temperature) {
+        unit = realDevice.temperatureUnit ?? TemperatureUnit.C;
+
+        if (unit === TemperatureUnit.F) {
+            value = value * 9 / 5 + 32
+        }
+
         value = formatValue(data);
-        unit = realDevice.temperatureUnit;
     } else if (listenerType === ListenerType.Humidity) {
         value = formatValue(data);
         unit = '%';
