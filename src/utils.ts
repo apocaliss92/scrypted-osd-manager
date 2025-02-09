@@ -230,10 +230,10 @@ export const parseOverlayData = (props: {
         unit = realDevice.temperatureUnit ?? TemperatureUnit.C;
 
         if (unit === TemperatureUnit.F) {
-            value = value * 9 / 5 + 32
+            value = data * 9 / 5 + 32;
         }
 
-        value = formatValue(data);
+        value = formatValue(value);
     } else if (listenerType === ListenerType.Humidity) {
         value = formatValue(data);
         unit = '%';
