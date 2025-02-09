@@ -22,7 +22,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     killed: boolean;
     overlays: CameraOverlay[] = [];
     listenersMap: ListenersMap = {};
-    checkInterval: NodeJS.Timeout;
     cameraDevice: CameraType;
 
     constructor(options: SettingsMixinDeviceOptions<any>, private plugin: OsdManagerProvider) {
@@ -36,8 +35,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     removeListeners() {
         try {
             Object.values(this.listenersMap).forEach(({ listener }) => listener && listener.removeListener());
-            this.checkInterval && clearInterval(this.checkInterval);
-            this.checkInterval = undefined;
         } catch (e) {
             this.console.error('Error in removeListeners', e);
         }
@@ -268,28 +265,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             }
         }
     }
-
-    // async startInterval() {
-    //     const funct = async () => {
-    //         try {
-    //             listenersIntevalFn({
-    //                 console: this.console,
-    //                 currentListeners: this.listenersMap,
-    //                 id: this.id,
-    //                 onUpdateFn: this.updateOverlayData,
-    //                 overlays: this.overlays,
-    //                 settings: await this.storageSettings.getSettings(),
-    //                 plugin: this.plugin
-    //             });
-    //         } catch (e) {
-    //             this.console.error('Error in init interval', e);
-    //         }
-
-    //     };
-
-    //     await funct();
-    //     this.checkInterval = setInterval(funct, 10 * 1000);
-    // }
 
     async init() {
         try {
