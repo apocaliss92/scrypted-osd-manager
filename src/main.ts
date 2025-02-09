@@ -4,8 +4,6 @@ import { osdManagerPrefix } from "./utils";
 import { StorageSettings } from "@scrypted/sdk/storage-settings";
 
 export default class OsdManagerProvider extends ScryptedDeviceBase implements MixinProvider, Settings {
-    amcrestProviderId: string;
-
     storageSettings = new StorageSettings(this, {
         lockText: {
             title: 'Text to show for Locked state',
@@ -33,11 +31,6 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
 
     constructor(nativeId: string) {
         super(nativeId);
-
-        const amcrestProvider = sdk.systemManager.getDeviceByName('Amcrest Plugin');
-        if (amcrestProvider) {
-            this.amcrestProviderId = amcrestProvider.id;
-        }
     }
 
     getSettings(): Promise<Setting[]> {
