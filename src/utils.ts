@@ -1,5 +1,5 @@
 import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
-import { StorageSettings } from "@scrypted/sdk/storage-settings";
+import { StorageSetting, StorageSettings, StorageSettingsDevice, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
 import { CameraType } from "./cameraMixin";
 import OsdManagerProvider from "./main";
 
@@ -37,16 +37,6 @@ export enum ListenerType {
 
 export type ListenersMap = Record<string, { listenerType: ListenerType, listener: EventListenerRegister, device?: string }>;
 
-export type OnUpdateOverlayFn = (props: {
-    overlayId: string,
-    listenerType: ListenerType,
-    listenInterface?: ScryptedInterface,
-    data: any,
-    device?: ScryptedDeviceBase,
-    noLog?: boolean,
-    plugin: OsdManagerProvider
-}) => Promise<void>
-
 export const getFriendlyTitle = (props: {
     rawTitle: string,
     device: ScryptedDeviceBase,
@@ -82,9 +72,10 @@ export const getOverlaySettings = (props: {
     storage: StorageSettings<any>,
     overlays: CameraOverlay[],
     device: CameraType,
+    onSettingUpdated: () => Promise<void>
 }) => {
-    const { storage, overlays, device } = props;
-    const settings: Setting[] = [];
+    const { storage, overlays, device, onSettingUpdated } = props;
+    const settings: StorageSetting[] = [];
 
     for (const overlay of overlays) {
         const rawTitle = `${overlay.id}`;
@@ -102,7 +93,6 @@ export const getOverlaySettings = (props: {
                 title: 'Current Content',
                 type: 'string',
                 subgroup: overlayName,
-                value: overlay.text,
                 readonly: true,
             }
         )
@@ -127,9 +117,10 @@ export const getOverlaySettings = (props: {
                 title: 'Overlay Type',
                 type: 'string',
                 choices: Object.values(OverlayType),
+                defaultValue: OverlayType.Text,
                 subgroup: overlayName,
-                value: type,
                 immediate: true,
+                onPut: onSettingUpdated
             }
         );
 
@@ -143,25 +134,27 @@ export const getOverlaySettings = (props: {
                 title: 'Text',
                 type: 'string',
                 subgroup: overlayName,
-                value: storage.getItem(textKey),
+                onPut: onSettingUpdated
             })
         };
 
-        const regexSetting: Setting = {
+        const regexSetting: StorageSetting = {
             key: regexKey,
             title: 'Value Regex',
             description: 'Expression to generate the text. ${value} contains the value and ${unit} the unit',
             type: 'string',
             subgroup: overlayName,
             placeholder: '${value} ${unit}',
-            value: storage.getItem(regexKey) || '${value} ${unit}',
+            defaultValue: '${value} ${unit}',
+            onPut: onSettingUpdated
         };
-        const precisionSetting: Setting = {
+        const precisionSetting: StorageSetting = {
             key: maxDecimalsKey,
             title: 'Max Decimals',
             type: 'number',
             subgroup: overlayName,
-            value: storage.getItem(maxDecimalsKey) ?? 1
+            defaultValue: 1,
+            onPut: onSettingUpdated
         };
 
         if (type === OverlayType.Device) {
@@ -173,7 +166,7 @@ export const getOverlaySettings = (props: {
                     subgroup: overlayName,
                     deviceFilter,
                     immediate: true,
-                    value: storage.getItem(deviceKey)
+                    onPut: onSettingUpdated
                 },
                 regexSetting,
                 precisionSetting,
@@ -189,23 +182,19 @@ export const getOverlaySettings = (props: {
 }
 
 export const getOverlay = (props: {
-    settings: Setting[],
+    storageSettings: StorageSettings<string>,
     overlayId: string
 }): Overlay => {
-    const { settings, overlayId } = props;
-    const settingsByKey = settings.reduce((tot, curr) => ({
-        ...tot,
-        [curr.key]: curr
-    }), {});
+    const { storageSettings, overlayId } = props;
 
     const { currentTextKey, deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlayId);
 
-    const currentText = settingsByKey[`${osdManagerPrefix}:${currentTextKey}`]?.value;
-    const type = settingsByKey[`${osdManagerPrefix}:${typeKey}`]?.value ?? OverlayType.Text;
-    const device = settingsByKey[`${osdManagerPrefix}:${deviceKey}`]?.value;
-    const text = settingsByKey[`${osdManagerPrefix}:${textKey}`]?.value;
-    const regex = settingsByKey[`${osdManagerPrefix}:${regexKey}`]?.value;
-    const maxDecimals = settingsByKey[`${osdManagerPrefix}:${maxDecimalsKey}`]?.value;
+    const currentText = storageSettings.values[currentTextKey];
+    const type = storageSettings.values[typeKey];
+    const device = storageSettings.values[deviceKey]?.id;
+    const text = storageSettings.values[textKey];
+    const regex = storageSettings.values[regexKey];
+    const maxDecimals = storageSettings.values[maxDecimalsKey];
 
     return {
         currentText,
@@ -215,124 +204,6 @@ export const getOverlay = (props: {
         text,
         maxDecimals
     };
-}
-
-export const listenersIntevalFn = (props: {
-    overlays: CameraOverlay[],
-    settings: Setting[],
-    console: Console,
-    id: string,
-    currentListeners: ListenersMap,
-    onUpdateFn: OnUpdateOverlayFn,
-    plugin: OsdManagerProvider
-}) => {
-    const { overlays, settings, console, id, currentListeners, onUpdateFn, plugin } = props;
-
-    for (const cameraOverlay of overlays) {
-        const overlayId = cameraOverlay.id;
-        const overlay = getOverlay({
-            overlayId,
-            settings
-        });
-
-        const overlayType = overlay.type;
-        let listenerType: ListenerType;
-        let listenInterface: ScryptedInterface;
-        let deviceId: string;
-        if (overlayType === OverlayType.Device) {
-            const realDevice = sdk.systemManager.getDeviceById(overlay.device);
-            if (realDevice) {
-                if (realDevice.interfaces.includes(ScryptedInterface.Thermometer)) {
-                    listenerType = ListenerType.Temperature;
-                    listenInterface = ScryptedInterface.Thermometer;
-                    deviceId = overlay.device;
-                } else if (realDevice.interfaces.includes(ScryptedInterface.HumiditySensor)) {
-                    listenerType = ListenerType.Humidity;
-                    listenInterface = ScryptedInterface.HumiditySensor;
-                    deviceId = overlay.device;
-                } else if (realDevice.interfaces.includes(ScryptedInterface.Lock)) {
-                    listenerType = ListenerType.Lock;
-                    listenInterface = ScryptedInterface.Lock;
-                    deviceId = overlay.device;
-                } else if (realDevice.interfaces.includes(ScryptedInterface.EntrySensor)) {
-                    listenerType = ListenerType.Entry;
-                    listenInterface = ScryptedInterface.EntrySensor;
-                    deviceId = overlay.device;
-                }
-            } else {
-                console.log(`Device ${overlay.device} not found`);
-            }
-        } else if (overlayType === OverlayType.FaceDetection) {
-            listenerType = ListenerType.Face;
-            listenInterface = ScryptedInterface.ObjectDetection;
-            deviceId = id;
-        } else if (overlayType === OverlayType.BatteryLeft) {
-            listenerType = ListenerType.Battery;
-            listenInterface = ScryptedInterface.Battery;
-            deviceId = id;
-        }
-
-        const currentListener = currentListeners[overlayId];
-        const currentDevice = currentListener?.device;
-        const differentType = (!currentListener || currentListener.listenerType !== listenerType);
-        const differentDevice = overlay.type === OverlayType.Device ? currentDevice !== overlay.device : false;
-        if (listenerType) {
-            if (listenInterface && deviceId && (differentType || differentDevice)) {
-                const realDevice = sdk.systemManager.getDeviceById<ScryptedDeviceBase>(deviceId);
-                console.log(`Overlay ${overlayId}: starting device ${realDevice.name} listener for type ${listenerType} on interface ${listenInterface}`);
-                currentListener?.listener && currentListener.listener.removeListener();
-                const update = async (data: any) => await onUpdateFn({
-                    listenInterface,
-                    overlayId,
-                    data,
-                    listenerType,
-                    device: realDevice,
-                    plugin
-                });
-                const newListener = realDevice.listen(listenInterface, async (_, __, data) => {
-                    await update(data);
-                });
-
-                if (listenInterface === ScryptedInterface.Thermometer) {
-                    update(realDevice.temperature);
-                } else if (listenInterface === ScryptedInterface.HumiditySensor) {
-                    update(realDevice.humidity);
-                } else if (listenInterface === ScryptedInterface.Lock) {
-                    update(realDevice.lockState);
-                } else if (listenInterface === ScryptedInterface.EntrySensor) {
-                    update(realDevice.entryOpen);
-                } else if (listenInterface === ScryptedInterface.Battery) {
-                    update(realDevice.batteryLevel);
-                } else if (listenInterface === ScryptedInterface.ObjectDetection) {
-                    update({ detections: [{ className: 'face', label: '-' }] } as ObjectsDetected);
-                }
-
-                currentListeners[overlayId] = {
-                    listenerType,
-                    device: overlay.device,
-                    listener: newListener
-                };
-            }
-        } else if (overlayType === OverlayType.Text) {
-            currentListener?.listener && currentListener.listener.removeListener();
-            onUpdateFn({
-                overlayId,
-                listenerType,
-                data: overlay.text,
-                noLog: true,
-                plugin
-            });
-        } else if (overlayType === OverlayType.Disabled) {
-            currentListener?.listener && currentListener.listener.removeListener();
-            onUpdateFn({
-                overlayId,
-                listenerType,
-                data: '',
-                noLog: true,
-                plugin
-            });
-        }
-    }
 }
 
 export const parseOverlayData = (props: {
@@ -378,4 +249,43 @@ export const parseOverlayData = (props: {
     }
 
     return textToUpdate;
+}
+
+export const convertSettingsToStorageSettings = async (props: {
+    device: StorageSettingsDevice,
+    dynamicSettings: StorageSetting[],
+    initStorage: StorageSettingsDict<string>
+}) => {
+    const { device, dynamicSettings, initStorage } = props;
+
+    const onPutToRestore: Record<string, any> = {};
+    Object.entries(initStorage).forEach(([key, setting]) => {
+        if (setting.onPut) {
+            onPutToRestore[key] = setting.onPut;
+        }
+    });
+
+    const settings: StorageSetting[] = await new StorageSettings(device, initStorage).getSettings();
+
+    settings.push(...dynamicSettings);
+
+    const deviceSettings: StorageSettingsDict<string> = {};
+
+    for (const setting of settings) {
+        const { value, key, onPut, ...rest } = setting;
+        deviceSettings[key] = {
+            ...rest
+        };
+        if (setting.onPut) {
+            deviceSettings[key].onPut = setting.onPut.bind(device)
+        }
+    }
+
+    const updateStorageSettings = new StorageSettings(device, deviceSettings);
+
+    Object.entries(onPutToRestore).forEach(([key, onPut]) => {
+        updateStorageSettings.settings[key].onPut = onPut;
+    });
+
+    return updateStorageSettings;
 }
