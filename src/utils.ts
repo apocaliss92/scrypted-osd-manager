@@ -49,10 +49,9 @@ export type OnUpdateOverlayFn = (props: {
 export const getFriendlyTitle = (props: {
     rawTitle: string,
     device: ScryptedDeviceBase,
-    plugin: OsdManagerProvider
 }) => {
-    const { device, plugin, rawTitle } = props;
-    if (device.providerId === plugin.amcrestProviderId) {
+    const { device, rawTitle } = props;
+    if (device.pluginId === '@scrypted/amcrest') {
         return rawTitle
             .replace(/^table\.VideoWidget\[\d+\]\./, '');
     } else {
@@ -84,7 +83,7 @@ export const getOverlaySettings = (props: {
     plugin: OsdManagerProvider,
     device: ScryptedDeviceBase,
 }) => {
-    const { storage, overlays, device, plugin } = props;
+    const { storage, overlays, device } = props;
     const settings: Setting[] = [];
 
     for (const overlay of overlays) {
@@ -92,7 +91,6 @@ export const getOverlaySettings = (props: {
         const friendlyTitle = getFriendlyTitle({
             rawTitle,
             device,
-            plugin,
         });
         const overlayName = friendlyTitle;
 
