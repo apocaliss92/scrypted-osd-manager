@@ -25,6 +25,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         super(options);
 
         this.plugin.mixinsMap[this.id] = this;
+        this.cameraDevice = sdk.systemManager.getDeviceById<VideoTextOverlays & Settings>(this.id);
         setTimeout(async () => !this.killed && await this.init(), 2000);
     }
 
@@ -148,9 +149,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     }
 
     async init() {
-        this.cameraDevice = sdk.systemManager.getDeviceById<VideoTextOverlays & Settings>(this.id);
-
-        try {
+         try {
             const funct = async () => {
                 try {
                     await this.getOverlayData();
