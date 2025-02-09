@@ -49,7 +49,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         settings.push(...getOverlaySettings({ 
             storage: this.storageSettings, 
             overlays: this.overlays,
-            device: this.mixinDevice,
+            device: this.cameraDevice,
             plugin: this.plugin 
         }));
 
