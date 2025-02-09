@@ -17,6 +17,16 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
             type: 'string',
             defaultValue: 'Unlocked',
         },
+        openText: {
+            title: 'Text to show for Open state',
+            type: 'string',
+            defaultValue: 'Open',
+        },
+        closedText: {
+            title: 'Text to show for Closed state',
+            type: 'string',
+            defaultValue: 'Closed',
+        },
     });
 
     public mixinsMap: Record<string, OsdManagerMixin> = {};

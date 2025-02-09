@@ -1,8 +1,8 @@
-import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
+import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, Entry, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
 import { StorageSettings } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
 
-export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}','${ScryptedInterface.Lock}'].some(elem => interfaces.includes(elem))`;
+export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}','${ScryptedInterface.Lock}','${ScryptedInterface.EntrySensor}'].some(elem => interfaces.includes(elem))`;
 export const pluginEnabledFilter = `interfaces.includes('${ScryptedInterface.VideoTextOverlays}')`;
 export const osdManagerPrefix = 'osdManager';
 
@@ -31,6 +31,7 @@ export enum ListenerType {
     Temperature = 'Temperature',
     Lock = 'Lock',
     Battery = 'Battery',
+    Entry = 'Entry',
 }
 
 export type ListenersMap = Record<string, { listenerType: ListenerType, listener: EventListenerRegister, device?: string }>;
@@ -255,6 +256,10 @@ export const listenersIntevalFn = (props: {
                     listenerType = ListenerType.Lock;
                     listenInterface = ScryptedInterface.Lock;
                     deviceId = overlay.device;
+                } else if (realDevice.interfaces.includes(ScryptedInterface.EntrySensor)) {
+                    listenerType = ListenerType.Entry;
+                    listenInterface = ScryptedInterface.EntrySensor;
+                    deviceId = overlay.device;
                 }
             } else {
                 console.log(`Device ${overlay.device} not found`);
@@ -296,6 +301,8 @@ export const listenersIntevalFn = (props: {
                     update(realDevice.humidity);
                 } else if (listenInterface === ScryptedInterface.Lock) {
                     update(realDevice.lockState);
+                } else if (listenInterface === ScryptedInterface.EntrySensor) {
+                    update(realDevice.entryOpen);
                 } else if (listenInterface === ScryptedInterface.Battery) {
                     update(realDevice.batteryLevel);
                 } else if (listenInterface === ScryptedInterface.ObjectDetection) {
@@ -361,7 +368,10 @@ export const parseOverlayData = (props: {
         unit = '%';
     } else if (listenerType === ListenerType.Lock) {
         textToUpdate = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.unlockText;
+    } else if (listenerType === ListenerType.Entry) {
+        textToUpdate = data ? plugin.storageSettings.values.closedText : plugin.storageSettings.values.openText;
     }
+        
 
     if (value) {
         textToUpdate = regex
