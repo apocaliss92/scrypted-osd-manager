@@ -229,7 +229,7 @@ export const parseOverlayData = (props: {
     } else if (listenerType === ListenerType.Temperature) {
         unit = realDevice.temperatureUnit ?? TemperatureUnit.C;
 
-        vale = data;
+        value = data;
         if (unit === TemperatureUnit.F) {
             value = data * 9 / 5 + 32;
         }
