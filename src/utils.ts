@@ -1,9 +1,10 @@
-import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, TemperatureUnit, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
+import sdk, { EventListenerRegister, HumiditySensor, Lock, LockState, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Sensors, Setting, TemperatureUnit, Thermometer, VideoTextOverlay } from "@scrypted/sdk";
 import { StorageSetting, StorageSettings, StorageSettingsDevice, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
-import { CameraType } from "./cameraMixin";
+import OsdManagerMixin, { CameraType } from "./cameraMixin";
 import OsdManagerProvider from "./main";
+import { UnitConverter } from '../../scrypted-homeassistant/src/unitConverter';
 
-export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}','${ScryptedInterface.Lock}','${ScryptedInterface.EntrySensor}'].some(elem => interfaces.includes(elem))`;
+export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}','${ScryptedInterface.Lock}','${ScryptedInterface.EntrySensor}','${ScryptedInterface.Sensors}'].some(elem => interfaces.includes(elem))`;
 export const pluginEnabledFilter = `interfaces.includes('${ScryptedInterface.VideoTextOverlays}')`;
 export const osdManagerPrefix = 'osdManager';
 
@@ -24,6 +25,8 @@ interface Overlay {
     device: string;
     regex: string;
     maxDecimals: number;
+    unit?: string;
+    sensorId?: string;
 }
 
 export enum ListenerType {
@@ -32,14 +35,16 @@ export enum ListenerType {
     Temperature = 'Temperature',
     Lock = 'Lock',
     Battery = 'Battery',
+    Sleep = 'Sleep',
     Entry = 'Entry',
+    Sensors = 'Sensors'
 }
 
 export type ListenersMap = Record<string, { listenerType: ListenerType, listener: EventListenerRegister, device?: string }>;
 
 export const getFriendlyTitle = (props: {
     rawTitle: string,
-    device: ScryptedDeviceBase,
+    device: OsdManagerMixin,
 }) => {
     const { device, rawTitle } = props;
     if (device.pluginId === '@scrypted/amcrest') {
@@ -57,6 +62,9 @@ export const getOverlayKeys = (overlayId: string) => {
     const regexKey = `overlay:${overlayId}:regex`;
     const deviceKey = `overlay:${overlayId}:device`;
     const maxDecimalsKey = `overlay:${overlayId}:maxDecimals`;
+    const sensorIdKey = `overlay:${overlayId}:sensorId`;
+    const sensorNameKey = `overlay:${overlayId}:sensorName`;
+    const unitKey = `overlay:${overlayId}:unit`;
 
     return {
         currentTextKey,
@@ -65,16 +73,19 @@ export const getOverlayKeys = (overlayId: string) => {
         regexKey,
         deviceKey,
         maxDecimalsKey,
+        sensorIdKey,
+        sensorNameKey,
+        unitKey,
     }
 }
 
 export const getOverlaySettings = (props: {
     storage: StorageSettings<any>,
     overlays: CameraOverlay[],
-    device: CameraType,
-    onSettingUpdated: () => Promise<void>
+    device: OsdManagerMixin,
+    logger: Console,
 }) => {
-    const { storage, overlays, device, onSettingUpdated } = props;
+    const { storage, overlays, device, logger } = props;
     const settings: StorageSetting[] = [];
 
     for (const overlay of overlays) {
@@ -85,7 +96,17 @@ export const getOverlaySettings = (props: {
         });
         const overlayName = friendlyTitle;
 
-        const { currentTextKey, deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlay.id);
+        const {
+            currentTextKey,
+            deviceKey,
+            typeKey,
+            regexKey,
+            textKey,
+            maxDecimalsKey,
+            sensorNameKey,
+            sensorIdKey,
+            unitKey
+        } = getOverlayKeys(overlay.id);
 
         settings.push(
             {
@@ -120,7 +141,7 @@ export const getOverlaySettings = (props: {
                 defaultValue: OverlayType.Text,
                 subgroup: overlayName,
                 immediate: true,
-                onPut: onSettingUpdated
+                onPut: async () => await device.refreshSettings(),
             }
         );
 
@@ -134,7 +155,7 @@ export const getOverlaySettings = (props: {
                 title: 'Text',
                 type: 'string',
                 subgroup: overlayName,
-                onPut: onSettingUpdated
+                onPut: async () => await device.refreshSettings(),
             })
         };
 
@@ -146,7 +167,7 @@ export const getOverlaySettings = (props: {
             subgroup: overlayName,
             placeholder: '${value} ${unit}',
             defaultValue: '${value} ${unit}',
-            onPut: onSettingUpdated
+            onPut: async () => await device.refreshSettings(),
         };
         const precisionSetting: StorageSetting = {
             key: maxDecimalsKey,
@@ -154,7 +175,7 @@ export const getOverlaySettings = (props: {
             type: 'number',
             subgroup: overlayName,
             defaultValue: 1,
-            onPut: onSettingUpdated
+            onPut: async () => await device.refreshSettings(),
         };
 
         if (type === OverlayType.Device) {
@@ -166,8 +187,69 @@ export const getOverlaySettings = (props: {
                     subgroup: overlayName,
                     deviceFilter,
                     immediate: true,
-                    onPut: onSettingUpdated
+                    onPut: async (_, value) => {
+                        logger.log('Refreshing', value);
+                        await storage.putSetting(sensorIdKey, undefined);
+                        await storage.putSetting(unitKey, undefined);
+                        await device.refreshSettings();
+                    }
                 },
+            );
+
+            const selectedDevice = storage.getItem(deviceKey) as ScryptedDeviceBase | string;
+            const selectedDeviceId = typeof selectedDevice === 'string' ? selectedDevice : selectedDevice.id;
+            const actualDevice = selectedDeviceId ? sdk.systemManager.getDeviceById<ScryptedDeviceBase & Sensors>(selectedDeviceId) : undefined;
+
+            if (actualDevice?.interfaces.includes(ScryptedInterface.Sensors)) {
+                const sensors = Object.entries(actualDevice.sensors ?? {});
+                const sensorNames = sensors.map(([_, item]) => item.name).sort();
+                settings.push(
+                    {
+                        key: sensorIdKey,
+                        title: 'Sensor ID',
+                        type: 'string',
+                        subgroup: overlayName,
+                        hide: true,
+                    },
+                    {
+                        key: sensorNameKey,
+                        title: 'Sensor',
+                        type: 'string',
+                        subgroup: overlayName,
+                        immediate: true,
+                        choices: sensorNames,
+                        onPut: async (_, value) => {
+                            const sensorFound = sensors.find(([_, item]) => item.name === value);
+
+                            await storage.putSetting(sensorIdKey, sensorFound?.[0]);
+                            await storage.putSetting(unitKey, undefined);
+                            await device.refreshSettings();
+                        }
+                    },
+                );
+
+                const selectedSensorId = storage.getItem(sensorIdKey) as string;
+                if (selectedSensorId) {
+                    const sensorFound = sensors.find(([id]) => id === selectedSensorId);
+                    if (sensorFound) {
+                        const { unit } = sensorFound[1];
+                        const possibleUnits = UnitConverter.getUnits(unit);
+                        settings.push(
+                            {
+                                key: unitKey,
+                                title: 'Unit',
+                                type: 'string',
+                                subgroup: overlayName,
+                                immediate: true,
+                                choices: possibleUnits,
+                                onPut: async () => await device.refreshSettings(),
+                            }
+                        );
+                    }
+                }
+            }
+
+            settings.push(
                 regexSetting,
                 precisionSetting,
             );
@@ -187,7 +269,16 @@ export const getOverlay = (props: {
 }): Overlay => {
     const { storageSettings, overlayId } = props;
 
-    const { currentTextKey, deviceKey, typeKey, regexKey, textKey, maxDecimalsKey } = getOverlayKeys(overlayId);
+    const {
+        currentTextKey,
+        deviceKey,
+        typeKey,
+        regexKey,
+        textKey,
+        maxDecimalsKey,
+        sensorIdKey,
+        unitKey
+    } = getOverlayKeys(overlayId);
 
     const currentText = storageSettings.values[currentTextKey];
     const type = storageSettings.values[typeKey];
@@ -195,6 +286,8 @@ export const getOverlay = (props: {
     const text = storageSettings.values[textKey];
     const regex = storageSettings.values[regexKey];
     const maxDecimals = storageSettings.values[maxDecimalsKey];
+    const sensorId = storageSettings.values[sensorIdKey];
+    const unit = storageSettings.values[unitKey];
 
     return {
         currentText,
@@ -202,7 +295,9 @@ export const getOverlay = (props: {
         type,
         regex,
         text,
-        maxDecimals
+        maxDecimals,
+        sensorId,
+        unit,
     };
 }
 
@@ -210,9 +305,10 @@ export const parseOverlayData = (props: {
     listenerType: ListenerType,
     data: any,
     overlay: Overlay,
-    plugin: OsdManagerProvider
+    plugin: OsdManagerProvider,
+    logger: Console,
 }) => {
-    const { listenerType, data, overlay, plugin } = props;
+    const { listenerType, data, overlay, plugin, logger } = props;
     const { regex, text, device, maxDecimals } = overlay;
     const realDevice = device ? sdk.systemManager.getDeviceById<SupportedDevice>(device) : undefined;
 
@@ -245,10 +341,14 @@ export const parseOverlayData = (props: {
         textToUpdate = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.unlockText;
     } else if (listenerType === ListenerType.Entry) {
         textToUpdate = data ? plugin.storageSettings.values.closedText : plugin.storageSettings.values.openText;
+    } else if (listenerType === ListenerType.Sensors) {
+        unit = overlay.unit ?? data.unit;
+        const localValue = UnitConverter.siToLocal(data?.value, unit);
+        value = formatValue(localValue);
     }
 
 
-    if (value) {
+    if (value != undefined) {
         textToUpdate = regex
             .replace('${value}', value || '')
             .replace('${unit}', unit || '');
