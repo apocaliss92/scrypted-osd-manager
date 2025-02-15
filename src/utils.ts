@@ -27,6 +27,7 @@ interface Overlay {
     maxDecimals: number;
     unit?: string;
     sensorId?: string;
+    sensorName?: string;
 }
 
 export enum ListenerType {
@@ -44,7 +45,7 @@ export type ListenersMap = Record<string, { listenerType: ListenerType, listener
 
 export const getFriendlyTitle = (props: {
     rawTitle: string,
-    device: OsdManagerMixin,
+    device: CameraType,
 }) => {
     const { device, rawTitle } = props;
     if (device.pluginId === '@scrypted/amcrest') {
@@ -82,10 +83,11 @@ export const getOverlayKeys = (overlayId: string) => {
 export const getOverlaySettings = (props: {
     storage: StorageSettings<any>,
     overlays: CameraOverlay[],
-    device: OsdManagerMixin,
     logger: Console,
+    device: CameraType,
+    onSettingUpdated: () => Promise<void>
 }) => {
-    const { storage, overlays, device, logger } = props;
+    const { storage, overlays, device, onSettingUpdated } = props;
     const settings: StorageSetting[] = [];
 
     for (const overlay of overlays) {
@@ -141,7 +143,7 @@ export const getOverlaySettings = (props: {
                 defaultValue: OverlayType.Text,
                 subgroup: overlayName,
                 immediate: true,
-                onPut: async () => await device.refreshSettings(),
+                onPut: onSettingUpdated
             }
         );
 
@@ -155,7 +157,7 @@ export const getOverlaySettings = (props: {
                 title: 'Text',
                 type: 'string',
                 subgroup: overlayName,
-                onPut: async () => await device.refreshSettings(),
+                onPut: onSettingUpdated
             })
         };
 
@@ -167,7 +169,7 @@ export const getOverlaySettings = (props: {
             subgroup: overlayName,
             placeholder: '${value} ${unit}',
             defaultValue: '${value} ${unit}',
-            onPut: async () => await device.refreshSettings(),
+            onPut: onSettingUpdated
         };
         const precisionSetting: StorageSetting = {
             key: maxDecimalsKey,
@@ -175,7 +177,7 @@ export const getOverlaySettings = (props: {
             type: 'number',
             subgroup: overlayName,
             defaultValue: 1,
-            onPut: async () => await device.refreshSettings(),
+            onPut: onSettingUpdated
         };
 
         if (type === OverlayType.Device) {
@@ -187,12 +189,12 @@ export const getOverlaySettings = (props: {
                     subgroup: overlayName,
                     deviceFilter,
                     immediate: true,
-                    onPut: async (_, value) => {
-                        logger.log('Refreshing', value);
-                        await storage.putSetting(sensorIdKey, undefined);
-                        await storage.putSetting(unitKey, undefined);
-                        await device.refreshSettings();
-                    }
+                    onPut: onSettingUpdated
+                    // onPut: async (_, value) => {
+                    //     // await storage.putSetting(sensorIdKey, undefined);
+                    //     // await storage.putSetting(unitKey, undefined);
+                    //     await device.refreshSettings();
+                    // }
                 },
             );
 
@@ -204,13 +206,13 @@ export const getOverlaySettings = (props: {
                 const sensors = Object.entries(actualDevice.sensors ?? {});
                 const sensorNames = sensors.map(([_, item]) => item.name).sort();
                 settings.push(
-                    {
-                        key: sensorIdKey,
-                        title: 'Sensor ID',
-                        type: 'string',
-                        subgroup: overlayName,
-                        hide: true,
-                    },
+                    // {
+                    //     key: sensorIdKey,
+                    //     title: 'Sensor ID',
+                    //     type: 'string',
+                    //     subgroup: overlayName,
+                    //     hide: true,
+                    // },
                     {
                         key: sensorNameKey,
                         title: 'Sensor',
@@ -218,19 +220,22 @@ export const getOverlaySettings = (props: {
                         subgroup: overlayName,
                         immediate: true,
                         choices: sensorNames,
-                        onPut: async (_, value) => {
-                            const sensorFound = sensors.find(([_, item]) => item.name === value);
+                        onPut: onSettingUpdated
+                        // onPut: async (_, value) => {
+                        //     const sensorFound = sensors.find(([_, item]) => item.name === value);
 
-                            await storage.putSetting(sensorIdKey, sensorFound?.[0]);
-                            await storage.putSetting(unitKey, undefined);
-                            await device.refreshSettings();
-                        }
+                        //     // await storage.putSetting(sensorIdKey, sensorFound?.[0]);
+                        //     // await storage.putSetting(unitKey, undefined);
+                        //     await device.refreshSettings();
+                        // }
                     },
                 );
 
-                const selectedSensorId = storage.getItem(sensorIdKey) as string;
-                if (selectedSensorId) {
-                    const sensorFound = sensors.find(([id]) => id === selectedSensorId);
+                // const selectedSensorId = storage.getItem(sensorIdKey) as string;
+                const selectedSensorName = storage.getItem(sensorNameKey) as string;
+                if (selectedSensorName) {
+                    const sensorFound = sensors.find(([_, { name }]) => name === selectedSensorName);
+                    // const sensorFound = sensors.find(([id]) => id === selectedSensorId);
                     if (sensorFound) {
                         const { unit } = sensorFound[1];
                         const possibleUnits = UnitConverter.getUnits(unit);
@@ -242,13 +247,13 @@ export const getOverlaySettings = (props: {
                                 subgroup: overlayName,
                                 immediate: true,
                                 choices: possibleUnits,
-                                onPut: async () => await device.refreshSettings(),
+                                onPut: onSettingUpdated
                             }
                         );
 
-                        if (possibleUnits.length === 1) {
-                            storage.putSetting(unitKey, possibleUnits[0]);
-                        }
+                        // if (possibleUnits.length === 1) {
+                        //     storage.putSetting(unitKey, possibleUnits[0]);
+                        // }
                     }
                 }
             }
@@ -281,6 +286,7 @@ export const getOverlay = (props: {
         textKey,
         maxDecimalsKey,
         sensorIdKey,
+        sensorNameKey,
         unitKey
     } = getOverlayKeys(overlayId);
 
@@ -291,6 +297,7 @@ export const getOverlay = (props: {
     const regex = storageSettings.values[regexKey];
     const maxDecimals = storageSettings.values[maxDecimalsKey];
     const sensorId = storageSettings.values[sensorIdKey];
+    const sensorName = storageSettings.values[sensorNameKey];
     const unit = storageSettings.values[unitKey];
 
     return {
@@ -301,6 +308,7 @@ export const getOverlay = (props: {
         text,
         maxDecimals,
         sensorId,
+        sensorName,
         unit,
     };
 }
@@ -346,7 +354,7 @@ export const parseOverlayData = (props: {
     } else if (listenerType === ListenerType.Entry) {
         textToUpdate = data ? plugin.storageSettings.values.closedText : plugin.storageSettings.values.openText;
     } else if (listenerType === ListenerType.Sensors) {
-        unit = overlay.unit ?? data.unit;
+        unit = overlay.unit ?? data?.unit;
         const localValue = UnitConverter.siToLocal(data?.value, unit);
         value = formatValue(localValue);
     }

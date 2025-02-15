@@ -1,4 +1,4 @@
-import sdk, { Battery, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Setting, Settings, SettingValue, Sleep, VideoTextOverlays } from "@scrypted/sdk";
+import sdk, { Battery, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Sensors, Setting, Settings, SettingValue, Sleep, VideoTextOverlays } from "@scrypted/sdk";
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
@@ -23,6 +23,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     overlays: CameraOverlay[] = [];
     listenersMap: ListenersMap = {};
     cameraDevice: CameraType;
+    refreshInterval: NodeJS.Timeout;
 
     constructor(options: SettingsMixinDeviceOptions<any>, private plugin: OsdManagerProvider) {
         super(options);
@@ -52,8 +53,13 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         const dynamicSettings = getOverlaySettings({
             storage: this.storageSettings,
             overlays: this.overlays,
-            device: this,
             logger: this.console,
+            device: this.cameraDevice,
+            onSettingUpdated: this.refreshSettings
+            // onSettingUpdated: async () => {
+            // this.refreshInterval && clearInterval(this.refreshInterval);
+            // this.refreshInterval = setTimeout(async () => await this.refreshSettings(), 1000);
+            // }
         });
 
         this.storageSettings = await convertSettingsToStorageSettings({
@@ -183,13 +189,16 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             let deviceId: string;
 
             if (overlayType === OverlayType.Device) {
-                const realDevice = sdk.systemManager.getDeviceById(overlay.device);
+                const realDevice = sdk.systemManager.getDeviceById<Sensors>(overlay.device);
 
                 if (realDevice) {
                     if (realDevice.interfaces.includes(ScryptedInterface.Sensors)) {
-                        if (overlay.sensorId) {
+                        if (overlay.sensorName) {
+                            const sensorId = overlay.sensorId ?? Object.entries(realDevice.sensors)
+                                .find(([_, { name }]) => name === overlay.sensorName)?.[0];
+
                             listenerType = ListenerType.Sensors;
-                            listenInterface = overlay.sensorId;
+                            listenInterface = sensorId;
                             deviceId = overlay.device;
                         }
                     } else if (realDevice.interfaces.includes(ScryptedInterface.Thermometer)) {
@@ -222,7 +231,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 deviceId = this.id;
             }
 
-            this.console.log(`Settings for overlay ${overlayId}: ${JSON.stringify({ overlayId, overlayType, listenerType, listenInterface, deviceId })}`);
+            this.console.log(`Settings for overlay ${overlayId}: ${JSON.stringify({ overlay, overlayType, listenerType, listenInterface, deviceId })}`);
             this.listenersMap[overlayId]?.listener && this.listenersMap[overlayId].listener.removeListener();
             if (listenerType) {
                 if (listenInterface && deviceId) {
@@ -290,7 +299,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     async init() {
         try {
             await this.refreshSettings();
-            await this.start();
         } catch (e) {
             this.console.error('Error in init', e);
         }
