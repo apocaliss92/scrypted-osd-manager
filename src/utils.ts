@@ -197,7 +197,7 @@ export const getOverlaySettings = (props: {
             );
 
             const selectedDevice = storage.getItem(deviceKey) as ScryptedDeviceBase | string;
-            const selectedDeviceId = typeof selectedDevice === 'string' ? selectedDevice : selectedDevice.id;
+            const selectedDeviceId = typeof selectedDevice === 'string' ? selectedDevice : selectedDevice?.id;
             const actualDevice = selectedDeviceId ? sdk.systemManager.getDeviceById<ScryptedDeviceBase & Sensors>(selectedDeviceId) : undefined;
 
             if (actualDevice?.interfaces.includes(ScryptedInterface.Sensors)) {
