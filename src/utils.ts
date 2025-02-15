@@ -245,6 +245,10 @@ export const getOverlaySettings = (props: {
                                 onPut: async () => await device.refreshSettings(),
                             }
                         );
+
+                        if (possibleUnits.length === 1) {
+                            storage.putSetting(unitKey, possibleUnits[0]);
+                        }
                     }
                 }
             }
