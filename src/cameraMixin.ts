@@ -127,15 +127,18 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         continue;
                     }
 
-                    const { device, type, regex, maxDecimals } = getOverlay({
+                    const { device, type, regex, maxDecimals, sensorId, sensorName, unit } = getOverlay({
                         overlayId,
                         storageSettings: this.plugin.mixinsMap[deviceId].storageSettings
                     });
-                    const { deviceKey, typeKey, regexKey, maxDecimalsKey } = getOverlayKeys(overlayId);
+                    const { deviceKey, typeKey, regexKey, maxDecimalsKey, sensorIdKey, sensorNameKey, unitKey } = getOverlayKeys(overlayId);
 
                     await this.putMixinSetting(deviceKey, device);
                     await this.putMixinSetting(typeKey, type);
                     await this.putMixinSetting(regexKey, regex);
+                    await this.putMixinSetting(sensorIdKey, sensorId);
+                    await this.putMixinSetting(sensorNameKey, sensorName);
+                    await this.putMixinSetting(unitKey, unit);
                     await this.putMixinSetting(maxDecimalsKey, String(maxDecimals));
                 }
             }
