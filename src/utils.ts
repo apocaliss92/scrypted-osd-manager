@@ -320,13 +320,13 @@ export const parseOverlayData = (props: {
     plugin: OsdManagerProvider,
     logger: Console,
 }) => {
-    const { listenerType, data, overlay, plugin, logger } = props;
+    const { listenerType, data, overlay, plugin } = props;
     const { regex, text, device, maxDecimals } = overlay;
     const realDevice = device ? sdk.systemManager.getDeviceById<SupportedDevice>(device) : undefined;
 
     const formatValue = (value: any) => {
         const factor = Math.pow(10, maxDecimals);
-        return Math.round(Number(value ?? 0) * factor) / factor;
+        return Math.floor(Number(value ?? 0) * factor) / factor;
     };
 
     let value;
@@ -362,11 +362,11 @@ export const parseOverlayData = (props: {
 
     if (value != undefined) {
         textToUpdate = regex
-            .replace('${value}', value || '')
-            .replace('${unit}', unit || '');
+            .replace('${value}', value ?? '')
+            .replace('${unit}', unit ?? '');
     }
 
-    return textToUpdate;
+    return { textToUpdate, value };
 }
 
 export const convertSettingsToStorageSettings = async (props: {

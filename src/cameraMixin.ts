@@ -8,6 +8,10 @@ export type CameraType = ScryptedDeviceBase & VideoTextOverlays & Settings & Sle
 
 export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implements Settings {
     initStorage: StorageSettingsDict<string> = {
+        lastFace: {
+            type: 'string',
+            hide: true,
+        },
         duplicateFromDevice: {
             title: 'Duplicate from device',
             description: 'Duplicate OSD information from another devices enabled on the plugin',
@@ -23,7 +27,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     overlays: CameraOverlay[] = [];
     listenersMap: ListenersMap = {};
     cameraDevice: CameraType;
-    refreshInterval: NodeJS.Timeout;
 
     constructor(options: SettingsMixinDeviceOptions<any>, private plugin: OsdManagerProvider) {
         super(options);
@@ -56,10 +59,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             logger: this.console,
             device: this.cameraDevice,
             onSettingUpdated: this.refreshSettings
-            // onSettingUpdated: async () => {
-            // this.refreshInterval && clearInterval(this.refreshInterval);
-            // this.refreshInterval = setTimeout(async () => await this.refreshSettings(), 1000);
-            // }
         });
 
         this.storageSettings = await convertSettingsToStorageSettings({
@@ -123,7 +122,10 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 const textOverlaysToDuplicate = await deviceToDuplicate.getVideoTextOverlays();
 
                 for (const [overlayId, data] of Object.entries(textOverlaysToDuplicate)) {
-                    if (!this.overlays.some(overlay => overlayId === overlay.id)) {
+                    const canDuplicate = deviceToDuplicate.pluginId === this.cameraDevice.pluginId ||
+                        this.overlays.some(overlay => overlayId === overlay.id);
+
+                    if (!canDuplicate) {
                         continue;
                     }
 
@@ -141,6 +143,9 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     await this.putMixinSetting(unitKey, unit);
                     await this.putMixinSetting(maxDecimalsKey, String(maxDecimals));
                 }
+
+                await this.putMixinSetting('duplicateFromDevice', undefined);
+                await this.refreshSettings();
             }
         } catch (e) {
             this.console.error(`Error in duplicateFromDevice`, e);
@@ -166,8 +171,11 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
 
         try {
             const overlay = getOverlay({ overlayId, storageSettings: this.storageSettings });
-            const textToUpdate = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin, logger: this.console });
+            const { textToUpdate, value } = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin, logger: this.console });
 
+            if (listenerType === ListenerType.Face) {
+                this.storageSettings.putSetting('lastFace', value);
+            }
             if (textToUpdate) {
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: textToUpdate });
             } else if (overlay.type === OverlayType.Disabled) {
@@ -263,7 +271,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     } else if (listenInterface === ScryptedInterface.Battery) {
                         update(realDevice.batteryLevel);
                     } else if (listenInterface === ScryptedInterface.ObjectDetection) {
-                        update({ detections: [{ className: 'face', label: '-' }] } as ObjectsDetected);
+                        update({ detections: [{ className: 'face', label: this.storageSettings.values.lastFace }] } as ObjectsDetected);
                     }
 
                     this.listenersMap[overlayId] = {
