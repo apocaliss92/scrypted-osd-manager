@@ -20,6 +20,11 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             immediate: true,
             onPut: async (_, value) => await this.duplicateFromDevice(value)
         },
+        refreshOverlays: {
+            title: 'Get data from camera',
+            type: 'button',
+            onPut: async () => await this.refreshSettings()
+        },
     };
     storageSettings = new StorageSettings(this, this.initStorage);
 
@@ -271,7 +276,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     } else if (listenInterface === ScryptedInterface.Battery) {
                         update(realDevice.batteryLevel);
                     } else if (listenInterface === ScryptedInterface.ObjectDetection) {
-                        update({ detections: [{ className: 'face', label: this.storageSettings.values.lastFace }] } as ObjectsDetected);
+                        update({ detections: [{ className: 'face', label: this.storageSettings.values.lastFace ?? '-' }] } as ObjectsDetected);
                     }
 
                     this.listenersMap[overlayId] = {
