@@ -2,7 +2,8 @@ import sdk, { Battery, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, S
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
-import { CameraOverlay, convertSettingsToStorageSettings, getOverlay, getOverlayKeys, getOverlaySettings, ListenersMap, ListenerType, osdManagerPrefix, OverlayType, parseOverlayData, pluginEnabledFilter } from "./utils";
+import { CameraOverlay, convertSettingsToStorageSettings, formatValue, getOverlay, getOverlayKeys, getOverlaySettings, getTemplateKeys, ListenersMap, ListenerType, osdManagerPrefix, Overlay, OverlayType, parseOverlayData, pluginEnabledFilter } from "./utils";
+import { Unit, UnitConverter } from "../../scrypted-homeassistant/src/unitConverter";
 
 export type CameraType = ScryptedDeviceBase & VideoTextOverlays & Settings & Sleep & Battery;
 
@@ -43,7 +44,10 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
 
     removeListeners() {
         try {
-            Object.values(this.listenersMap).forEach(({ listener }) => listener && listener.removeListener());
+            Object.values(this.listenersMap).forEach(({ listener, interval }) => {
+                listener && listener.removeListener();
+                interval && clearInterval(interval);
+            });
         } catch (e) {
             this.console.error('Error in removeListeners', e);
         }
@@ -63,6 +67,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             overlays: this.overlays,
             logger: this.console,
             device: this.cameraDevice,
+            templates: this.plugin.storageSettings.values.templates,
             onSettingUpdated: this.refreshSettings
         });
 
@@ -134,11 +139,22 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         continue;
                     }
 
-                    const { device, type, regex, maxDecimals, sensorId, sensorName, unit } = getOverlay({
+                    const { device, type, regex, maxDecimals, sensorId, sensorName, unit, text, template, updateFrequency } = getOverlay({
                         overlayId,
                         storageSettings: this.plugin.mixinsMap[deviceId].storageSettings
                     });
-                    const { deviceKey, typeKey, regexKey, maxDecimalsKey, sensorIdKey, sensorNameKey, unitKey } = getOverlayKeys(overlayId);
+                    const {
+                        deviceKey,
+                        typeKey,
+                        regexKey,
+                        maxDecimalsKey,
+                        sensorIdKey,
+                        sensorNameKey,
+                        unitKey,
+                        templateKey,
+                        updateFrequencyKey,
+                        textKey
+                    } = getOverlayKeys(overlayId);
 
                     await this.putMixinSetting(deviceKey, device);
                     await this.putMixinSetting(typeKey, type);
@@ -146,6 +162,9 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     await this.putMixinSetting(sensorIdKey, sensorId);
                     await this.putMixinSetting(sensorNameKey, sensorName);
                     await this.putMixinSetting(unitKey, unit);
+                    await this.putMixinSetting(templateKey, template);
+                    await this.putMixinSetting(updateFrequencyKey, String(updateFrequency));
+                    await this.putMixinSetting(textKey, text);
                     await this.putMixinSetting(maxDecimalsKey, String(maxDecimals));
                 }
 
@@ -155,6 +174,49 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         } catch (e) {
             this.console.error(`Error in duplicateFromDevice`, e);
         }
+    }
+
+    private updateOverlayDataFromTemplate = async (props: {
+        overlayId: string,
+        template: string,
+    }) => {
+        const { template, overlayId } = props;
+
+        const { devicesKey, getDeviceKeys, getSensorKeys, parserStringKey } = getTemplateKeys(template);
+        const deviceIds = JSON.parse(this.plugin.storage.getItem(devicesKey) ?? '[]');
+        let parserString = this.plugin.storage.getItem(parserStringKey);
+
+        try {
+            for (const deviceId of deviceIds) {
+                const device = sdk.systemManager.getDeviceById<Sensors>(deviceId);
+                const { sensorsKey } = getDeviceKeys(deviceId);
+
+                const selectedSensorIds = JSON.parse(this.plugin.storage.getItem(sensorsKey) ?? '[]');
+
+                for (const sensorId of selectedSensorIds) {
+                    const sensorData = device.sensors[sensorId];
+                    const { maxDecimalsKey, unitKey } = getSensorKeys(sensorId);
+                    const sensorUnit = this.plugin.storage.getItem(unitKey);
+                    const maxDecimals = this.plugin.storageSettings.getItem(maxDecimalsKey);
+
+                    const replaceString = `{${device.id}.${sensorId}}`;
+
+                    const unit = sensorUnit ?? sensorData?.unit;
+                    let value = sensorData?.value;
+                    if (typeof sensorData?.value === 'number') {
+                        const localValue = UnitConverter.siToLocal(sensorData.value, unit as Unit);
+                        value = formatValue(localValue, maxDecimals);
+                    }
+
+                    parserString = parserString.replaceAll(replaceString, String(value));
+                }
+            }
+        } catch (e) {
+            this.console.log('Error parsing template', e);
+        }
+
+        this.console.log(`Updating overlay ${overlayId} with ${parserString}`);
+        await this.cameraDevice.setVideoTextOverlay(overlayId, { text: parserString });
     }
 
     private updateOverlayData = async (props: {
@@ -249,6 +311,8 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
 
             this.console.log(`Settings for overlay ${overlayId}: ${JSON.stringify({ overlay, overlayType, listenerType, listenInterface, deviceId })}`);
             this.listenersMap[overlayId]?.listener && this.listenersMap[overlayId].listener.removeListener();
+            this.listenersMap[overlayId]?.interval && clearInterval(this.listenersMap[overlayId].interval);
+
             if (listenerType) {
                 if (listenInterface && deviceId) {
                     const realDevice = sdk.systemManager.getDeviceById<ScryptedDeviceBase>(deviceId);
@@ -297,6 +361,17 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     listenerType,
                     data: '',
                 });
+            } else if (overlayType === OverlayType.Template && overlay.template) {
+                this.console.log(`Overlay ${overlayId}: interval to update the template ${overlay.template}`);
+
+                const newListener = setInterval(async () => {
+                    await this.updateOverlayDataFromTemplate({ overlayId, template: overlay.template });
+                }, overlay.updateFrequency * 1000)
+
+                this.listenersMap[overlayId] = {
+                    listenerType: ListenerType.Interval,
+                    interval: newListener
+                };
             }
 
             // if (this.cameraDevice.interfaces.includes(ScryptedInterface.Sleep)) {
