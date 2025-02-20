@@ -189,26 +189,28 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         try {
             for (const deviceId of deviceIds) {
                 const device = sdk.systemManager.getDeviceById<Sensors>(deviceId);
-                const { sensorsKey } = getDeviceKeys(deviceId);
+                if (device && device.sensors) {
+                    const { sensorsKey } = getDeviceKeys(deviceId);
 
-                const selectedSensorIds = JSON.parse(this.plugin.storage.getItem(sensorsKey) ?? '[]');
+                    const selectedSensorIds = JSON.parse(this.plugin.storage.getItem(sensorsKey) ?? '[]');
 
-                for (const sensorId of selectedSensorIds) {
-                    const sensorData = device.sensors[sensorId];
-                    const { maxDecimalsKey, unitKey } = getSensorKeys(sensorId);
-                    const sensorUnit = this.plugin.storage.getItem(unitKey);
-                    const maxDecimals = this.plugin.storageSettings.getItem(maxDecimalsKey);
+                    for (const sensorId of selectedSensorIds) {
+                        const sensorData = device.sensors[sensorId];
+                        const { maxDecimalsKey, unitKey } = getSensorKeys(sensorId);
+                        const sensorUnit = this.plugin.storage.getItem(unitKey);
+                        const maxDecimals = this.plugin.storageSettings.getItem(maxDecimalsKey);
 
-                    const replaceString = `{${device.id}.${sensorId}}`;
+                        const replaceString = `{${device.id}.${sensorId}}`;
 
-                    const unit = sensorUnit ?? sensorData?.unit;
-                    let value = sensorData?.value;
-                    if (typeof sensorData?.value === 'number') {
-                        const localValue = UnitConverter.siToLocal(sensorData.value, unit as Unit);
-                        value = formatValue(localValue, maxDecimals);
+                        const unit = sensorUnit ?? sensorData?.unit;
+                        let value = sensorData?.value;
+                        if (typeof sensorData?.value === 'number') {
+                            const localValue = UnitConverter.siToLocal(sensorData.value, unit as Unit);
+                            value = formatValue(localValue, maxDecimals);
+                        }
+
+                        parserString = parserString.replaceAll(replaceString, String(value));
                     }
-
-                    parserString = parserString.replaceAll(replaceString, String(value));
                 }
             }
         } catch (e) {
@@ -231,14 +233,18 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             return;
         }
 
-        this.console.log(`Setting overlay data ${overlayId}: ${JSON.stringify({
-            listenerType,
-            data
-        })}`);
-
         try {
             const overlay = getOverlay({ overlayId, storageSettings: this.storageSettings });
             const { textToUpdate, value } = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin, logger: this.console });
+
+            if (value == undefined) {
+                return;
+            }
+
+            this.console.log(`Setting overlay data ${overlayId}: ${JSON.stringify({
+                listenerType,
+                data
+            })}`);
 
             if (listenerType === ListenerType.Face) {
                 this.storageSettings.putSetting('lastFace', value);
@@ -301,7 +307,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 }
             } else if (overlayType === OverlayType.FaceDetection) {
                 listenerType = ListenerType.Face;
-                listenInterface = ScryptedInterface.ObjectDetection;
+                listenInterface = ScryptedInterface.ObjectDetector;
                 deviceId = this.id;
             } else if (overlayType === OverlayType.BatteryLeft) {
                 listenerType = ListenerType.Battery;
@@ -339,8 +345,8 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         update(realDevice.entryOpen);
                     } else if (listenInterface === ScryptedInterface.Battery) {
                         update(realDevice.batteryLevel);
-                    } else if (listenInterface === ScryptedInterface.ObjectDetection) {
-                        update({ detections: [{ className: 'face', label: this.storageSettings.values.lastFace ?? '-' }] } as ObjectsDetected);
+                    } else if (listenInterface === ScryptedInterface.ObjectDetector) {
+                        update({ detections: [{ className: 'face', label: this.storageSettings.values.lastFace || '-' }] } as ObjectsDetected);
                     }
 
                     this.listenersMap[overlayId] = {

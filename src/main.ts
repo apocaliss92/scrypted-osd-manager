@@ -104,7 +104,9 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
                     availableSensorIds.push(`{${device.id}.${sensorId}}`);
 
                     const { maxDecimalsKey, unitKey } = getSensorKeys(sensorId);
-                    const { unit } = device.sensors[sensorId]
+                    const sensorData = device.sensors[sensorId]
+
+                    const unit = sensorData?.unit;
 
                     if (unit) {
                         const possibleUnits = UnitConverter.getUnits(unit);
