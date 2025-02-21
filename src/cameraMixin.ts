@@ -237,18 +237,20 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             const overlay = getOverlay({ overlayId, storageSettings: this.storageSettings });
             const { textToUpdate, value } = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin, logger: this.console });
 
-            if (value == undefined) {
+            if (value == undefined && listenerType === ListenerType.Face) {
                 return;
             }
 
             this.console.log(`Setting overlay data ${overlayId}: ${JSON.stringify({
                 listenerType,
-                data
+                data,
+                textToUpdate
             })}`);
 
             if (listenerType === ListenerType.Face) {
                 this.storageSettings.putSetting('lastFace', value);
             }
+
             if (textToUpdate) {
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: textToUpdate });
             } else if (overlay.type === OverlayType.Disabled) {

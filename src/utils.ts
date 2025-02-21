@@ -397,7 +397,7 @@ export const parseOverlayData = (props: {
 
     let value;
     let unit;
-    let textToUpdate = text;
+    let textToUpdate;
     if (listenerType === ListenerType.Face) {
         value = (data as ObjectsDetected)?.detections?.find(det => det.className === 'face')?.label;
     } else if (listenerType === ListenerType.Temperature) {
@@ -416,17 +416,19 @@ export const parseOverlayData = (props: {
         value = formatValue(data, maxDecimals);
         unit = '%';
     } else if (listenerType === ListenerType.Lock) {
-        textToUpdate = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.unlockText;
+        value = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.unlockText;
     } else if (listenerType === ListenerType.Entry) {
-        textToUpdate = data ? plugin.storageSettings.values.closedText : plugin.storageSettings.values.openText;
+        value = data ? plugin.storageSettings.values.closedText : plugin.storageSettings.values.openText;
     } else if (listenerType === ListenerType.Sensors) {
         unit = overlay.unit ?? data?.unit;
         const localValue = UnitConverter.siToLocal(data?.value, unit);
         value = formatValue(localValue, maxDecimals);
+    } else if (overlay.type === OverlayType.Text) {
+        textToUpdate = text;
     }
 
 
-    if (value != undefined) {
+    if (value != undefined && regex) {
         textToUpdate = regex
             .replace('${value}', value ?? '')
             .replace('${unit}', unit ?? '');
