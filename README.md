@@ -16,6 +16,10 @@ The `OSD Manager` plugin for Scrypted provides advanced overlay management for y
      - **Device**: To pull dynamic data from sensor devices (e.g., Thermometer, Humidity Sensor, Lock). One device per overlay is supported.
      - **Face Detection**: To display the name of the last detected face (if enabled).
      - **Battery Left**: To show the remaining battery percentage of the device (if supported).
+     - **Template**: Define a template on the plugin settings to be reused on multiple cameras. The template can use multiple sensors from multiple devices at the same time and render the text in one single overlay 
 
 4. **Duplicating Data**
    - Use the "Duplicate from device" option to mirror OSD settings from another compatible device.
+
+6. **Notes**
+   - Reolink cameras allow setting only 1 overlay, the camera name. Most of the cameras do not allow complext characters, only a-Z and 0-9 symbols. Set the maxdecimals property to 0 to render any number
