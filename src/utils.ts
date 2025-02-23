@@ -418,7 +418,14 @@ export const parseOverlayData = (props: {
     } else if (listenerType === ListenerType.Lock) {
         value = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.unlockText;
     } else if (listenerType === ListenerType.Entry) {
-        value = data ? plugin.storageSettings.values.closedText : plugin.storageSettings.values.openText;
+        if (data === 'jammed') {
+            value = 'Jammed';
+        }
+        else {
+            value = data
+                ? plugin.storageSettings.values.openText
+                : plugin.storageSettings.values.closedText;
+        }
     } else if (listenerType === ListenerType.Sensors) {
         unit = overlay.unit ?? data?.unit;
         const localValue = UnitConverter.siToLocal(data?.value, unit);
