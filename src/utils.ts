@@ -384,6 +384,18 @@ export const formatValue = (value: any, maxDecimals: number) => {
     return Math.floor(Number(value ?? 0) * factor) / factor;
 };
 
+export const getEntryText = (data: any, plugin: OsdManagerProvider): string => {
+    return data === 'jammed'
+        ? plugin.storageSettings.values.jammedText
+        : (data ? plugin.storageSettings.values.openText : plugin.storageSettings.values.closedText);
+};
+
+export const getLockText = (data: any, plugin: OsdManagerProvider): string => {
+    return data === 'jammed'
+        ? plugin.storageSettings.values.jammedText
+        : (data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.unlockText);
+};
+
 export const parseOverlayData = (props: {
     listenerType: ListenerType,
     data: any,
@@ -402,7 +414,7 @@ export const parseOverlayData = (props: {
         value = (data as ObjectsDetected)?.detections?.find(det => det.className === 'face')?.label;
     } else if (listenerType === ListenerType.Temperature) {
         unit = realDevice.temperatureUnit ?? TemperatureUnit.C;
-
+        
         value = data;
         if (unit === TemperatureUnit.F) {
             value = data * 9 / 5 + 32;
@@ -416,16 +428,9 @@ export const parseOverlayData = (props: {
         value = formatValue(data, maxDecimals);
         unit = '%';
     } else if (listenerType === ListenerType.Lock) {
-        value = data === LockState.Locked ? plugin.storageSettings.values.lockText : plugin.storageSettings.values.unlockText;
+        value = getLockText(data, plugin);
     } else if (listenerType === ListenerType.Entry) {
-        if (data === 'jammed') {
-            value = 'Jammed';
-        }
-        else {
-            value = data
-                ? plugin.storageSettings.values.openText
-                : plugin.storageSettings.values.closedText;
-        }
+        value = getEntryText(data, plugin);
     } else if (listenerType === ListenerType.Sensors) {
         unit = overlay.unit ?? data?.unit;
         const localValue = UnitConverter.siToLocal(data?.value, unit);
