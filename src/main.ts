@@ -27,6 +27,11 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
             type: 'string',
             defaultValue: 'Closed',
         },
+        jammedText: {
+            title: 'Text to show for Jammed state',
+            type: 'string',
+            defaultValue: 'Jammed',
+        },
         templates: {
             title: 'Templates',
             description: 'Define templates from multiple devices',
