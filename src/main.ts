@@ -8,27 +8,27 @@ import { UnitConverter } from "../../scrypted-homeassistant/src/unitConverter";
 export default class OsdManagerProvider extends ScryptedDeviceBase implements MixinProvider, Settings {
     initStorage: StorageSettingsDict<string> = {
         lockText: {
-            title: 'Text to show for Locked state',
+            title: 'Locked State Text',
             type: 'string',
             defaultValue: 'Locked',
         },
         unlockText: {
-            title: 'Text to show for Unlocked state',
+            title: 'Unlocked State Text',
             type: 'string',
             defaultValue: 'Unlocked',
         },
         openText: {
-            title: 'Text to show for Open state',
+            title: 'Open State Text',
             type: 'string',
             defaultValue: 'Open',
         },
         closedText: {
-            title: 'Text to show for Closed state',
+            title: 'Closed State Text',
             type: 'string',
             defaultValue: 'Closed',
         },
         jammedText: {
-            title: 'Text to show for Jammed state',
+            title: 'Jammed State Text',
             type: 'string',
             defaultValue: 'Jammed',
         },
@@ -40,7 +40,7 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
             defaultValue: [],
             choices: [],
             combobox: true,
-            onPut: this.refreshSettings
+            onPut: () => this.refreshSettings()
         },
     };
     storageSettings = new StorageSettings(this, this.initStorage);
@@ -55,9 +55,8 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
 
     async refreshSettings() {
         const dynamicSettings: StorageSetting[] = [];
-
         const { templates } = this.storageSettings.values;
-
+    
         for (const templateId of templates) {
             const {
                 devicesKey,
@@ -66,32 +65,29 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
                 group,
                 parserStringKey,
             } = getTemplateKeys(templateId);
-
+    
             dynamicSettings.push(
                 {
-                    key: devicesKey,
-                    title: 'Device',
-                    type: 'device',
-                    group,
-                    deviceFilter,
-                    multiple: true,
-                    onPut: this.refreshSettings,
+                key: devicesKey,
+                title: 'Device',
+                type: 'device',
+                group,
+                deviceFilter,
+                multiple: true,
+                onPut: this.refreshSettings,
                 },
             );
-
+    
             const deviceIds = JSON.parse(this.storage.getItem(devicesKey) ?? '[]');
             const availableSensorIds: string[] = [];
-
+    
             for (const deviceId of deviceIds) {
-                const device = sdk.systemManager.getDeviceById<Sensors>(deviceId);
-
-                const { sensorsKey } = getDeviceKeys(deviceId);
-                const selectedSensorIds = JSON.parse(this.storage.getItem(sensorsKey) ?? '[]');
-
-                const sensorIds = Object.keys(device.sensors);
-
-                dynamicSettings.push(
-                    {
+                const device = sdk.systemManager.getDeviceById(deviceId);
+                if (device && device.interfaces.includes(ScryptedInterface.Sensors)) {
+                    const sensorDevice = device as unknown as Sensors;
+                    const { sensorsKey } = getDeviceKeys(deviceId);
+                    const sensorIds = Object.keys(sensorDevice.sensors ?? {});
+                    dynamicSettings.push({
                         key: sensorsKey,
                         title: `Available sensors on device "${device.name}"`,
                         description: `Select the sensors to make available on the template. Access it on the parser with "{${deviceId}.sensorName}"`,
@@ -101,20 +97,19 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
                         immediate: true,
                         combobox: true,
                         multiple: true,
-                        onPut: this.refreshSettings
-                    },
-                );
+                        onPut: this.refreshSettings,
+                    });
+    
+                    const selectedSensorIds = JSON.parse(this.storage.getItem(sensorsKey) ?? '[]');
+                    for (const sensorId of selectedSensorIds) {
+                        availableSensorIds.push(`{${device.id}.${sensorId}}`);
 
-                for (const sensorId of selectedSensorIds) {
-                    availableSensorIds.push(`{${device.id}.${sensorId}}`);
+                        const { maxDecimalsKey, unitKey } = getSensorKeys(sensorId);
+                        const sensorData = sensorDevice.sensors[sensorId];
+                        const unit = sensorData?.unit;
 
-                    const { maxDecimalsKey, unitKey } = getSensorKeys(sensorId);
-                    const sensorData = device.sensors[sensorId]
-
-                    const unit = sensorData?.unit;
-
-                    if (unit) {
-                        const possibleUnits = UnitConverter.getUnits(unit);
+                        if (unit) {
+                            const possibleUnits = UnitConverter.getUnits(unit);
 
                         dynamicSettings.push(
                             {
@@ -128,7 +123,7 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
                                 choices: possibleUnits,
                             },
                         )
-                    }
+                        }
 
                     dynamicSettings.push(
                         {
@@ -138,11 +133,65 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
                             subgroup: sensorId,
                             defaultValue: 1,
                             group,
-                        },
-                    );
+                        });
+                    }
+                } else if (device) {
+                    const parts = device.nativeId.split(':');
+                    const strippedNativeId = parts.length > 1 ? parts[1] : parts[0];                    
+                    availableSensorIds.push(`{${device.id}.${strippedNativeId}}`);
+                    if (device.interfaces.includes(ScryptedInterface.Thermometer)) {
+                        const thermoDevice = device as any; 
+                        const { maxDecimalsKey, unitKey } = getSensorKeys('temperature');
+                        const sensorData = { value: thermoDevice.temperature, unit: thermoDevice.temperatureUnit };
+                        if (sensorData.unit) {
+                            const possibleUnits = UnitConverter.getUnits(sensorData.unit);
+                            dynamicSettings.push({
+                                key: unitKey,
+                                title: 'Unit',
+                                type: 'string',
+                                subgroup: 'temperature',
+                                defaultValue: possibleUnits[0],
+                                group,
+                                immediate: true,
+                                choices: possibleUnits,
+                            });
+                        }
+                        dynamicSettings.push({
+                            key: maxDecimalsKey,
+                            title: 'Max Decimals',
+                            type: 'number',
+                            subgroup: 'temperature',
+                            defaultValue: 1,
+                            group,
+                        });
+                    } else if (device.interfaces.includes(ScryptedInterface.HumiditySensor)) {
+                        const humidityDevice = device as any; // Treat as HumiditySensor
+                        const { maxDecimalsKey, unitKey } = getSensorKeys('humidity');
+                        const sensorData = { value: humidityDevice.humidity, unit: '%' };
+                        dynamicSettings.push({
+                            key: unitKey,
+                            title: 'Unit',
+                            type: 'string',
+                            subgroup: 'humidity',
+                            defaultValue: '%',
+                            group,
+                            immediate: true,
+                            choices: ['%'],
+                        });
+                        dynamicSettings.push({
+                            key: maxDecimalsKey,
+                            title: 'Max Decimals',
+                            type: 'number',
+                            subgroup: 'humidity',
+                            defaultValue: 1,
+                            group,
+                        });
+                    }
+                } else {
+                    this.console.warn(`Device ${deviceId} not found`);
                 }
             }
-
+    
             dynamicSettings.push(
                 {
                     key: parserStringKey,
@@ -153,7 +202,7 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
                 },
             );
         }
-
+    
         this.storageSettings = await convertSettingsToStorageSettings({
             device: this,
             dynamicSettings,
@@ -161,7 +210,7 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
         });
 
     }
-
+    
     async getSettings(): Promise<Setting[]> {
         return this.storageSettings.getSettings();
     }

@@ -432,13 +432,19 @@ export const parseOverlayData = (props: {
     } else if (listenerType === ListenerType.Entry) {
         value = getEntryText(data, plugin);
     } else if (listenerType === ListenerType.Sensors) {
-        unit = overlay.unit ?? data?.unit;
-        const localValue = UnitConverter.siToLocal(data?.value, unit);
-        value = formatValue(localValue, maxDecimals);
+        if (typeof data === 'number') {
+            unit = overlay.unit;
+            value = formatValue(UnitConverter.siToLocal(data, unit), maxDecimals);
+        }
+        else {
+            unit = overlay.unit ?? data?.unit;
+            const localValue = UnitConverter.siToLocal(data?.value, unit);
+            value = formatValue(localValue, maxDecimals);
+        }
     } else if (overlay.type === OverlayType.Text) {
         textToUpdate = text;
     }
-
+    
 
     if (value != undefined && regex) {
         textToUpdate = regex
