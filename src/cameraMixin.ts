@@ -241,11 +241,11 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 return;
             }
 
-            this.console.log(`Setting overlay data ${overlayId}: ${JSON.stringify({
-                listenerType,
-                data,
-                textToUpdate
-            })}`);
+            // this.console.log(`Setting overlay data ${overlayId}: ${JSON.stringify({
+            //     listenerType,
+            //     data,
+            //     textToUpdate
+            // })}`);
 
             if (listenerType === ListenerType.Face) {
                 this.storageSettings.putSetting('lastFace', value);
