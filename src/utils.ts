@@ -494,3 +494,8 @@ export const convertSettingsToStorageSettings = async (props: {
 
     return updateStorageSettings;
 }
+
+export function getStrippedNativeId(device: ScryptedDeviceBase): string {
+    const parts = device.nativeId.split(':');
+    return parts.length > 1 ? parts[1] : parts[0];
+}

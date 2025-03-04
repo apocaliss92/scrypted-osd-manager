@@ -2,7 +2,7 @@ import sdk, { Battery, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, S
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
-import { CameraOverlay, convertSettingsToStorageSettings, formatValue, getOverlay, getOverlayKeys, getOverlaySettings, getTemplateKeys, getEntryText, getLockText, ListenersMap, ListenerType, osdManagerPrefix, Overlay, OverlayType, parseOverlayData, pluginEnabledFilter } from "./utils";
+import { CameraOverlay, convertSettingsToStorageSettings, formatValue, getOverlay, getOverlayKeys, getOverlaySettings, getTemplateKeys, getEntryText, getLockText, ListenersMap, ListenerType, osdManagerPrefix, Overlay, OverlayType, parseOverlayData, pluginEnabledFilter, getStrippedNativeId } from "./utils";
 import { Unit, UnitConverter } from "../../scrypted-homeassistant/src/unitConverter";
 
 export type CameraType = ScryptedDeviceBase & VideoTextOverlays & Settings & Sleep & Battery;
@@ -181,7 +181,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         template: string,
     }) {
         const { overlayId, template } = props;
-        const { devicesKey, getDeviceKeys, getSensorKeys, parserStringKey } = getTemplateKeys(template);
+        const { devicesKey, parserStringKey } = getTemplateKeys(template);
         const deviceIds = JSON.parse(this.plugin.storage.getItem(devicesKey) ?? '[]');
         let parserString = this.plugin.storage.getItem(parserStringKey) || '';
     
@@ -192,7 +192,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     this.console.warn(`Device ${deviceId} not found.`);
                     continue;
                 }
-                parserString = await this.applyDeviceTemplate(parserString, device, getDeviceKeys, getSensorKeys);
+                parserString = await this.applyDeviceTemplate(parserString, device, template);
             }
         } catch (e) {
             this.console.error('Error parsing template', e);
@@ -205,22 +205,19 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     private async applyDeviceTemplate(
         templateString: string,
         device: any,
-        getDeviceKeys: (deviceId: string) => { sensorsKey: string },
-        getSensorKeys: (sensorId: string) => { maxDecimalsKey: string, unitKey: string }
+        template: string
     ): Promise<string> {
-        if (device.sensors) {
+        const { getDeviceKeys, getSensorKeys } = getTemplateKeys(template);
+
+        if (device.interfaces.includes(ScryptedInterface.Sensors)) {
             const { sensorsKey } = getDeviceKeys(device.id);
             const selectedSensorIds = JSON.parse(this.plugin.storage.getItem(sensorsKey) ?? '[]');
             for (const sensorId of selectedSensorIds) {
                 const sensorData = device.sensors[sensorId];
                 const { maxDecimalsKey, unitKey } = getSensorKeys(sensorId);
                 const sensorUnit = this.plugin.storage.getItem(unitKey);
-                const storedMaxDecimals = this.plugin.storageSettings.getItem(maxDecimalsKey);
-                const maxDecimals = (storedMaxDecimals !== undefined && storedMaxDecimals !== null)
-                    ? storedMaxDecimals
-                    : 1;
+                const maxDecimals = this.plugin.storageSettings.getItem(maxDecimalsKey) ?? 1;
                 const replaceString = `{${device.id}.${sensorId}}`;
-    
                 const unit = sensorUnit ?? sensorData?.unit;
                 let value = sensorData?.value;
                 if (typeof value === 'number') {
@@ -229,9 +226,9 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 }
                 templateString = templateString.replaceAll(replaceString, String(value));
             }
-        } else {
-            const parts = device.nativeId.split(':');
-            const strippedNativeId = parts.length > 1 ? parts[1] : parts[0];
+        } 
+        else {
+            const strippedNativeId = getStrippedNativeId(device);
             const replaceString = `{${device.id}.${strippedNativeId}}`;
             let value: any;
             let unit: any;
@@ -239,10 +236,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     
             if (device.interfaces.includes(ScryptedInterface.Thermometer)) {
                 const sensorKeys = getSensorKeys('temperature');
-                const storedMaxDecimals = this.plugin.storageSettings.getItem(sensorKeys.maxDecimalsKey);
-                maxDecimals = (storedMaxDecimals !== undefined && storedMaxDecimals !== null)
-                    ? storedMaxDecimals
-                    : 1;
+                maxDecimals = this.plugin.storageSettings.getItem(sensorKeys.maxDecimalsKey) ?? 1;
                 value = device.temperature;
                 unit = device.temperatureUnit;
                 if (unit === TemperatureUnit.F) {
@@ -251,10 +245,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             }
             else if (device.interfaces.includes(ScryptedInterface.HumiditySensor)) {
                 const sensorKeys = getSensorKeys('humidity');
-                const storedMaxDecimals = this.plugin.storageSettings.getItem(sensorKeys.maxDecimalsKey);
-                maxDecimals = (storedMaxDecimals !== undefined && storedMaxDecimals !== null)
-                    ? storedMaxDecimals
-                    : 1;
+                maxDecimals = this.plugin.storageSettings.getItem(sensorKeys.maxDecimalsKey) ?? 1;
                 value = device.humidity;
                 unit = '%';
             }

@@ -1,6 +1,6 @@
 import sdk, { Settings, DeviceBase, MixinProvider, ScryptedDeviceBase, ScryptedDeviceType, ScryptedInterface, WritableDeviceState, Setting, SettingValue, DeviceInformation, Sensors } from "@scrypted/sdk";
 import OsdManagerMixin from "./cameraMixin";
-import { convertSettingsToStorageSettings, deviceFilter, getTemplateKeys, osdManagerPrefix, SupportedDevice } from "./utils";
+import { convertSettingsToStorageSettings, deviceFilter, getStrippedNativeId, getTemplateKeys, osdManagerPrefix, SupportedDevice } from "./utils";
 import { StorageSetting, StorageSettings, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
 import { template } from "lodash";
 import { UnitConverter } from "../../scrypted-homeassistant/src/unitConverter";
@@ -82,7 +82,7 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
             const availableSensorIds: string[] = [];
     
             for (const deviceId of deviceIds) {
-                const device = sdk.systemManager.getDeviceById(deviceId);
+                const device = sdk.systemManager.getDeviceById(deviceId) as unknown as ScryptedDeviceBase;
                 if (device && device.interfaces.includes(ScryptedInterface.Sensors)) {
                     const sensorDevice = device as unknown as Sensors;
                     const { sensorsKey } = getDeviceKeys(deviceId);
@@ -136,8 +136,7 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
                         });
                     }
                 } else if (device) {
-                    const parts = device.nativeId.split(':');
-                    const strippedNativeId = parts.length > 1 ? parts[1] : parts[0];                    
+                    const strippedNativeId = getStrippedNativeId(device);         
                     availableSensorIds.push(`{${device.id}.${strippedNativeId}}`);
                     if (device.interfaces.includes(ScryptedInterface.Thermometer)) {
                         const thermoDevice = device as any; 
