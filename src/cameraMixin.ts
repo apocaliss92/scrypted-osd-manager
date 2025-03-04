@@ -13,6 +13,11 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             type: 'string',
             hide: true,
         },
+        enableDebug: {
+            title: 'Enable debug',
+            type: 'boolean',
+            immediate: true,
+        },
         duplicateFromDevice: {
             title: 'Duplicate from device',
             description: 'Duplicate OSD information from another devices enabled on the plugin',
@@ -33,6 +38,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     overlays: CameraOverlay[] = [];
     listenersMap: ListenersMap = {};
     cameraDevice: CameraType;
+    logger: Console;
 
     constructor(options: SettingsMixinDeviceOptions<any>, private plugin: OsdManagerProvider) {
         super(options);
@@ -43,13 +49,14 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     }
 
     removeListeners() {
+        const logger = this.getLogger();
         try {
             Object.values(this.listenersMap).forEach(({ listener, interval }) => {
                 listener && listener.removeListener();
                 interval && clearInterval(interval);
             });
         } catch (e) {
-            this.console.error('Error in removeListeners', e);
+            logger.error('Error in removeListeners', e);
         }
     }
 
@@ -58,14 +65,35 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         this.removeListeners();
     }
 
+    public getLogger() {
+        const deviceConsole = this.console;
+
+        if (!this.logger) {
+            const log = (debug: boolean, message?: any, ...optionalParams: any[]) => {
+                const now = new Date().toLocaleString();
+                if (!debug || this.storageSettings.values.enableDebug) {
+                    deviceConsole.log(` ${now} - `, message, ...optionalParams);
+                }
+            };
+            this.logger = {
+                log: (message?: any, ...optionalParams: any[]) => log(false, message, ...optionalParams),
+                error: (message?: any, ...optionalParams: any[]) => log(false, message, ...optionalParams),
+                debug: (message?: any, ...optionalParams: any[]) => log(true, message, ...optionalParams),
+            } as Console
+        }
+
+        return this.logger;
+    }
+
     async refreshSettings() {
-        this.console.log('Refreshing settings');
+        const logger = this.getLogger();
+        logger.log('Refreshing settings');
         await this.getOverlayData();
 
         const dynamicSettings = getOverlaySettings({
             storage: this.storageSettings,
             overlays: this.overlays,
-            logger: this.console,
+            logger,
             device: this.cameraDevice,
             templates: this.plugin.storageSettings.values.templates,
             onSettingUpdated: this.refreshSettings
@@ -99,6 +127,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     }
 
     async getOverlayData() {
+        const logger = this.getLogger();
         try {
             if (this.cameraDevice.sleeping) {
                 return;
@@ -120,11 +149,12 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 await this.putMixinSetting(currentTextKey, currentText);
             }
         } catch (e) {
-            this.console.error('Error inr getOverlayData', e);
+            logger.error('Error inr getOverlayData', e);
         }
     }
 
     async duplicateFromDevice(deviceId: string) {
+        const logger = this.getLogger();
         try {
             const deviceToDuplicate = sdk.systemManager.getDeviceById<VideoTextOverlays & Settings>(deviceId);
 
@@ -172,14 +202,15 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 await this.refreshSettings();
             }
         } catch (e) {
-            this.console.error(`Error in duplicateFromDevice`, e);
+            logger.error(`Error in duplicateFromDevice`, e);
         }
     }
 
-    private async updateOverlayDataFromTemplate(props: {
+    private updateOverlayDataFromTemplate = async (props: {
         overlayId: string,
         template: string,
-    }) {
+    }) => {
+        const logger = this.getLogger();
         const { overlayId, template } = props;
         const { devicesKey, parserStringKey } = getTemplateKeys(template);
         const deviceIds = JSON.parse(this.plugin.storage.getItem(devicesKey) ?? '[]');
@@ -189,16 +220,16 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             for (const deviceId of deviceIds) {
                 const device = sdk.systemManager.getDeviceById(deviceId);
                 if (!device) {
-                    this.console.warn(`Device ${deviceId} not found.`);
+                    logger.log(`Device ${deviceId} not found.`);
                     continue;
                 }
                 parserString = await this.applyDeviceTemplate(parserString, device, template);
             }
         } catch (e) {
-            this.console.error('Error parsing template', e);
+            logger.log('Error parsing template', e);
         }
     
-        this.console.log(`Updating overlay ${overlayId} with ${parserString}`);
+        logger.debug(`Updating overlay ${overlayId} with ${parserString}`);
         await this.cameraDevice.setVideoTextOverlay(overlayId, { text: parserString });
     }
     
@@ -275,6 +306,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         listenInterface?: ScryptedInterface | string,
         data: any,
     }) => {
+        const logger = this.getLogger();
         const { overlayId, listenerType, data } = props;
 
         if (this.cameraDevice.sleeping) {
@@ -283,13 +315,13 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
 
         try {
             const overlay = getOverlay({ overlayId, storageSettings: this.storageSettings });
-            const { textToUpdate, value } = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin, logger: this.console });
+            const { textToUpdate, value } = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin, logger });
 
             if (value == undefined && listenerType === ListenerType.Face) {
                 return;
             }
 
-            this.console.log(`Setting overlay data ${overlayId}: ${JSON.stringify({
+            logger.debug(`Setting overlay data ${overlayId}: ${JSON.stringify({
                 listenerType,
                 data,
                 textToUpdate
@@ -305,11 +337,12 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: false });
             }
         } catch (e) {
-            this.console.error('Error in updateOverlayData', e);
+            logger.error('Error in updateOverlayData', e);
         }
     }
 
     async start() {
+        const logger = this.getLogger();
         for (const cameraOverlay of this.overlays) {
             const overlayId = cameraOverlay.id;
             const overlay = getOverlay({
@@ -353,7 +386,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         deviceId = overlay.device;
                     }
                 } else {
-                    this.console.log(`Device ${overlay.device} not found`);
+                    logger.log(`Device ${overlay.device} not found`);
                 }
             } else if (overlayType === OverlayType.FaceDetection) {
                 listenerType = ListenerType.Face;
@@ -365,14 +398,14 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 deviceId = this.id;
             }
 
-            this.console.log(`Settings for overlay ${overlayId}: ${JSON.stringify({ overlay, overlayType, listenerType, listenInterface, deviceId })}`);
+            logger.log(`Settings for overlay ${overlayId}: ${JSON.stringify({ overlay, overlayType, listenerType, listenInterface, deviceId })}`);
             this.listenersMap[overlayId]?.listener && this.listenersMap[overlayId].listener.removeListener();
             this.listenersMap[overlayId]?.interval && clearInterval(this.listenersMap[overlayId].interval);
 
             if (listenerType) {
                 if (listenInterface && deviceId) {
                     const realDevice = sdk.systemManager.getDeviceById<ScryptedDeviceBase>(deviceId);
-                    this.console.log(`Overlay ${overlayId}: starting device ${realDevice.name} listener for type ${listenerType} on interface ${listenInterface}`);
+                    logger.log(`Overlay ${overlayId}: starting device ${realDevice.name} listener for type ${listenerType} on interface ${listenInterface}`);
                     const update = async (data: any) => await this.updateOverlayData({
                         listenInterface,
                         overlayId,
@@ -418,7 +451,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     data: '',
                 });
             } else if (overlayType === OverlayType.Template && overlay.template) {
-                this.console.log(`Overlay ${overlayId}: interval to update the template ${overlay.template}`);
+                logger.log(`Overlay ${overlayId}: interval to update the template ${overlay.template}`);
 
                 const newListener = setInterval(async () => {
                     await this.updateOverlayDataFromTemplate({ overlayId, template: overlay.template });
@@ -444,10 +477,11 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     }
 
     async init() {
+        const logger = this.getLogger();
         try {
             await this.refreshSettings();
         } catch (e) {
-            this.console.error('Error in init', e);
+            logger.error('Error in init', e);
         }
     }
 }
