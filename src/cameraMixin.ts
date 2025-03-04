@@ -1,8 +1,8 @@
-import sdk, { Battery, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Sensors, Setting, Settings, SettingValue, Sleep, VideoTextOverlays } from "@scrypted/sdk";
+import sdk, { Battery, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Sensors, Setting, Settings, SettingValue, Sleep, TemperatureUnit, VideoTextOverlays } from "@scrypted/sdk";
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
 import OsdManagerProvider from "./main";
-import { CameraOverlay, convertSettingsToStorageSettings, formatValue, getOverlay, getOverlayKeys, getOverlaySettings, getTemplateKeys, ListenersMap, ListenerType, osdManagerPrefix, Overlay, OverlayType, parseOverlayData, pluginEnabledFilter } from "./utils";
+import { CameraOverlay, convertSettingsToStorageSettings, formatValue, getOverlay, getOverlayKeys, getOverlaySettings, getTemplateKeys, getEntryText, getLockText, ListenersMap, ListenerType, osdManagerPrefix, Overlay, OverlayType, parseOverlayData, pluginEnabledFilter, getStrippedNativeId } from "./utils";
 import { Unit, UnitConverter } from "../../scrypted-homeassistant/src/unitConverter";
 
 export type CameraType = ScryptedDeviceBase & VideoTextOverlays & Settings & Sleep & Battery;
@@ -211,47 +211,95 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         template: string,
     }) => {
         const logger = this.getLogger();
-        const { template, overlayId } = props;
-
-        const { devicesKey, getDeviceKeys, getSensorKeys, parserStringKey } = getTemplateKeys(template);
+        const { overlayId, template } = props;
+        const { devicesKey, parserStringKey } = getTemplateKeys(template);
         const deviceIds = JSON.parse(this.plugin.storage.getItem(devicesKey) ?? '[]');
-        let parserString = this.plugin.storage.getItem(parserStringKey);
-
+        let parserString = this.plugin.storage.getItem(parserStringKey) || '';
+    
         try {
             for (const deviceId of deviceIds) {
-                const device = sdk.systemManager.getDeviceById<Sensors>(deviceId);
-                if (device && device.sensors) {
-                    const { sensorsKey } = getDeviceKeys(deviceId);
-
-                    const selectedSensorIds = JSON.parse(this.plugin.storage.getItem(sensorsKey) ?? '[]');
-
-                    for (const sensorId of selectedSensorIds) {
-                        const sensorData = device.sensors[sensorId];
-                        const { maxDecimalsKey, unitKey } = getSensorKeys(sensorId);
-                        const sensorUnit = this.plugin.storage.getItem(unitKey);
-                        const maxDecimals = this.plugin.storageSettings.getItem(maxDecimalsKey);
-
-                        const replaceString = `{${device.id}.${sensorId}}`;
-
-                        const unit = sensorUnit ?? sensorData?.unit;
-                        let value = sensorData?.value;
-                        if (typeof sensorData?.value === 'number') {
-                            const localValue = UnitConverter.siToLocal(sensorData.value, unit as Unit);
-                            value = formatValue(localValue, maxDecimals);
-                        }
-
-                        parserString = parserString.replaceAll(replaceString, String(value));
-                    }
+                const device = sdk.systemManager.getDeviceById(deviceId);
+                if (!device) {
+                    logger.log(`Device ${deviceId} not found.`);
+                    continue;
                 }
+                parserString = await this.applyDeviceTemplate(parserString, device, template);
             }
         } catch (e) {
             logger.log('Error parsing template', e);
         }
-
+    
         logger.debug(`Updating overlay ${overlayId} with ${parserString}`);
         await this.cameraDevice.setVideoTextOverlay(overlayId, { text: parserString });
     }
+    
+    private async applyDeviceTemplate(
+        templateString: string,
+        device: any,
+        template: string
+    ): Promise<string> {
+        const { getDeviceKeys, getSensorKeys } = getTemplateKeys(template);
 
+        if (device.interfaces.includes(ScryptedInterface.Sensors)) {
+            const { sensorsKey } = getDeviceKeys(device.id);
+            const selectedSensorIds = JSON.parse(this.plugin.storage.getItem(sensorsKey) ?? '[]');
+            for (const sensorId of selectedSensorIds) {
+                const sensorData = device.sensors[sensorId];
+                const { maxDecimalsKey, unitKey } = getSensorKeys(sensorId);
+                const sensorUnit = this.plugin.storage.getItem(unitKey);
+                const maxDecimals = this.plugin.storageSettings.getItem(maxDecimalsKey) ?? 1;
+                const replaceString = `{${device.id}.${sensorId}}`;
+                const unit = sensorUnit ?? sensorData?.unit;
+                let value = sensorData?.value;
+                if (typeof value === 'number') {
+                    const localValue = UnitConverter.siToLocal(value, unit as Unit);
+                    value = formatValue(localValue, maxDecimals);
+                }
+                templateString = templateString.replaceAll(replaceString, String(value));
+            }
+        } 
+        else {
+            const strippedNativeId = getStrippedNativeId(device);
+            const replaceString = `{${device.id}.${strippedNativeId}}`;
+            let value: any;
+            let unit: any;
+            let maxDecimals = 1;
+    
+            if (device.interfaces.includes(ScryptedInterface.Thermometer)) {
+                const sensorKeys = getSensorKeys('temperature');
+                maxDecimals = this.plugin.storageSettings.getItem(sensorKeys.maxDecimalsKey) ?? 1;
+                value = device.temperature;
+                unit = device.temperatureUnit;
+                if (unit === TemperatureUnit.F) {
+                    value = value * 9 / 5 + 32;
+                }
+            }
+            else if (device.interfaces.includes(ScryptedInterface.HumiditySensor)) {
+                const sensorKeys = getSensorKeys('humidity');
+                maxDecimals = this.plugin.storageSettings.getItem(sensorKeys.maxDecimalsKey) ?? 1;
+                value = device.humidity;
+                unit = '%';
+            }
+            else if (device.interfaces.includes(ScryptedInterface.EntrySensor)) {
+                value = getEntryText(device.entryOpen, this.plugin);
+            }
+            else if (device.interfaces.includes(ScryptedInterface.Lock)) {
+                value = getLockText(device.lockState, this.plugin);
+            }
+            else if (device.interfaces.includes(ScryptedInterface.BinarySensor)) {
+                value = device.binaryState ? 'On' : 'Off';
+            }
+    
+            if (typeof value === 'number') {
+                const localValue = UnitConverter.siToLocal(value, unit);
+                value = formatValue(localValue, maxDecimals);
+            }
+            templateString = templateString.replaceAll(replaceString, String(value));
+        }
+    
+        return templateString;
+    }
+                            
     private updateOverlayData = async (props: {
         overlayId: string,
         listenerType: ListenerType,
