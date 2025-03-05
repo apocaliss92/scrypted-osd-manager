@@ -169,7 +169,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         continue;
                     }
 
-                    const { device, type, regex, maxDecimals, sensorId, sensorName, unit, text, template, updateFrequency } = getOverlay({
+                    const { device, type, regex, maxDecimals, sensorId, sensorName, unit, text, template, updateFrequency, maxCharacters } = getOverlay({
                         overlayId,
                         storageSettings: this.plugin.mixinsMap[deviceId].storageSettings
                     });
@@ -183,7 +183,8 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         unitKey,
                         templateKey,
                         updateFrequencyKey,
-                        textKey
+                        textKey,
+                        maxCharactersKey
                     } = getOverlayKeys(overlayId);
 
                     await this.putMixinSetting(deviceKey, device);
@@ -196,6 +197,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     await this.putMixinSetting(updateFrequencyKey, String(updateFrequency));
                     await this.putMixinSetting(textKey, text);
                     await this.putMixinSetting(maxDecimalsKey, String(maxDecimals));
+                    await this.putMixinSetting(maxCharactersKey, String(maxCharacters));
                 }
 
                 await this.putMixinSetting('duplicateFromDevice', undefined);
@@ -206,16 +208,33 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         }
     }
 
+    private limitText(props: { overlayId: string, text: string }) {
+        const { overlayId, text } = props;
+
+        const overlay = getOverlay({ overlayId, storageSettings: this.storageSettings });
+        const { maxCharacters } = overlay;
+
+        if (!maxCharacters) {
+            return text;
+        } else {
+            if (text.length <= maxCharacters) {
+                return text;
+            } else {
+                return `${text.substring(0, maxCharacters - 3)}...`;
+            }
+        }
+    }
+
     private updateOverlayDataFromTemplate = async (props: {
         overlayId: string,
         template: string,
     }) => {
         const logger = this.getLogger();
         const { overlayId, template } = props;
-        const { devicesKey, parserStringKey } = getTemplateKeys(template);
+        const { devicesKey, parserStringKey, } = getTemplateKeys(template);
         const deviceIds = JSON.parse(this.plugin.storage.getItem(devicesKey) ?? '[]');
         let parserString = this.plugin.storage.getItem(parserStringKey) || '';
-    
+
         try {
             for (const deviceId of deviceIds) {
                 const device = sdk.systemManager.getDeviceById(deviceId);
@@ -228,11 +247,11 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         } catch (e) {
             logger.log('Error parsing template', e);
         }
-    
+
         logger.debug(`Updating overlay ${overlayId} with ${parserString}`);
-        await this.cameraDevice.setVideoTextOverlay(overlayId, { text: parserString });
+        await this.cameraDevice.setVideoTextOverlay(overlayId, { text: this.limitText({ overlayId, text: parserString }) });
     }
-    
+
     private async applyDeviceTemplate(
         templateString: string,
         device: any,
@@ -257,14 +276,14 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 }
                 templateString = templateString.replaceAll(replaceString, String(value));
             }
-        } 
+        }
         else {
             const strippedNativeId = getStrippedNativeId(device);
             const replaceString = `{${device.id}.${strippedNativeId}}`;
             let value: any;
             let unit: any;
             let maxDecimals = 1;
-    
+
             if (device.interfaces.includes(ScryptedInterface.Thermometer)) {
                 const sensorKeys = getSensorKeys('temperature');
                 maxDecimals = this.plugin.storageSettings.getItem(sensorKeys.maxDecimalsKey) ?? 1;
@@ -289,17 +308,17 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             else if (device.interfaces.includes(ScryptedInterface.BinarySensor)) {
                 value = device.binaryState ? 'On' : 'Off';
             }
-    
+
             if (typeof value === 'number') {
                 const localValue = UnitConverter.siToLocal(value, unit);
                 value = formatValue(localValue, maxDecimals);
             }
             templateString = templateString.replaceAll(replaceString, String(value));
         }
-    
+
         return templateString;
     }
-                            
+
     private updateOverlayData = async (props: {
         overlayId: string,
         listenerType: ListenerType,
@@ -332,7 +351,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             }
 
             if (textToUpdate) {
-                await this.cameraDevice.setVideoTextOverlay(overlayId, { text: textToUpdate });
+                await this.cameraDevice.setVideoTextOverlay(overlayId, { text: this.limitText({ overlayId, text: textToUpdate }) });
             } else if (overlay.type === OverlayType.Disabled) {
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: false });
             }

@@ -25,6 +25,7 @@ export interface Overlay {
     type: OverlayType;
     device: string;
     regex: string;
+    maxCharacters?: number;
     maxDecimals: number;
     unit?: string;
     sensorId?: string;
@@ -104,6 +105,7 @@ export const getOverlayKeys = (overlayId: string) => {
     const regexKey = `overlay:${overlayId}:regex`;
     const deviceKey = `overlay:${overlayId}:device`;
     const templateKey = `overlay:${overlayId}:template`;
+    const maxCharactersKey = `overlay:${overlayId}:maxCharacters`;
     const maxDecimalsKey = `overlay:${overlayId}:maxDecimals`;
     const sensorIdKey = `overlay:${overlayId}:sensorId`;
     const sensorNameKey = `overlay:${overlayId}:sensorName`;
@@ -116,6 +118,7 @@ export const getOverlayKeys = (overlayId: string) => {
         typeKey,
         regexKey,
         deviceKey,
+        maxCharactersKey,
         maxDecimalsKey,
         sensorIdKey,
         sensorNameKey,
@@ -149,6 +152,7 @@ export const getOverlaySettings = (props: {
             typeKey,
             regexKey,
             textKey,
+            maxCharactersKey,
             maxDecimalsKey,
             sensorNameKey,
             unitKey,
@@ -169,6 +173,7 @@ export const getOverlaySettings = (props: {
 
             continue;
         }
+
         const type = storage.getItem(typeKey) ?? OverlayType.Text;
 
         settings.push(
@@ -180,6 +185,13 @@ export const getOverlaySettings = (props: {
                 defaultValue: OverlayType.Text,
                 subgroup: overlayName,
                 immediate: true,
+                onPut: onSettingUpdated
+            },
+            {
+                key: maxCharactersKey,
+                title: 'Max Characters',
+                type: 'number',
+                subgroup: overlayName,
                 onPut: onSettingUpdated
             }
         );
@@ -250,11 +262,6 @@ export const getOverlaySettings = (props: {
                     deviceFilter,
                     immediate: true,
                     onPut: onSettingUpdated
-                    // onPut: async (_, value) => {
-                    //     // await storage.putSetting(sensorIdKey, undefined);
-                    //     // await storage.putSetting(unitKey, undefined);
-                    //     await device.refreshSettings();
-                    // }
                 },
             );
 
@@ -266,13 +273,6 @@ export const getOverlaySettings = (props: {
                 const sensors = Object.entries(actualDevice.sensors ?? {});
                 const sensorNames = sensors.map(([_, item]) => item.name).sort();
                 settings.push(
-                    // {
-                    //     key: sensorIdKey,
-                    //     title: 'Sensor ID',
-                    //     type: 'string',
-                    //     subgroup: overlayName,
-                    //     hide: true,
-                    // },
                     {
                         key: sensorNameKey,
                         title: 'Sensor',
@@ -281,21 +281,12 @@ export const getOverlaySettings = (props: {
                         immediate: true,
                         choices: sensorNames,
                         onPut: onSettingUpdated
-                        // onPut: async (_, value) => {
-                        //     const sensorFound = sensors.find(([_, item]) => item.name === value);
-
-                        //     // await storage.putSetting(sensorIdKey, sensorFound?.[0]);
-                        //     // await storage.putSetting(unitKey, undefined);
-                        //     await device.refreshSettings();
-                        // }
                     },
                 );
 
-                // const selectedSensorId = storage.getItem(sensorIdKey) as string;
                 const selectedSensorName = storage.getItem(sensorNameKey) as string;
                 if (selectedSensorName) {
                     const sensorFound = sensors.find(([_, { name }]) => name === selectedSensorName);
-                    // const sensorFound = sensors.find(([id]) => id === selectedSensorId);
                     if (sensorFound) {
                         const { unit } = sensorFound[1];
                         const possibleUnits = UnitConverter.getUnits(unit);
@@ -310,10 +301,6 @@ export const getOverlaySettings = (props: {
                                 onPut: onSettingUpdated
                             }
                         );
-
-                        // if (possibleUnits.length === 1) {
-                        //     storage.putSetting(unitKey, possibleUnits[0]);
-                        // }
                     }
                 }
             }
@@ -344,6 +331,7 @@ export const getOverlay = (props: {
         typeKey,
         regexKey,
         textKey,
+        maxCharactersKey,
         maxDecimalsKey,
         sensorIdKey,
         sensorNameKey,
@@ -357,6 +345,7 @@ export const getOverlay = (props: {
     const device = storageSettings.values[deviceKey]?.id;
     const text = storageSettings.values[textKey];
     const regex = storageSettings.values[regexKey];
+    const maxCharacters = storageSettings.values[maxCharactersKey];
     const maxDecimals = storageSettings.values[maxDecimalsKey];
     const sensorId = storageSettings.values[sensorIdKey];
     const sensorName = storageSettings.values[sensorNameKey];
@@ -370,6 +359,7 @@ export const getOverlay = (props: {
         type,
         regex,
         text,
+        maxCharacters,
         maxDecimals,
         sensorId,
         sensorName,
@@ -414,7 +404,7 @@ export const parseOverlayData = (props: {
         value = (data as ObjectsDetected)?.detections?.find(det => det.className === 'face')?.label;
     } else if (listenerType === ListenerType.Temperature) {
         unit = realDevice.temperatureUnit ?? TemperatureUnit.C;
-        
+
         value = data;
         if (unit === TemperatureUnit.F) {
             value = data * 9 / 5 + 32;
@@ -444,7 +434,7 @@ export const parseOverlayData = (props: {
     } else if (overlay.type === OverlayType.Text) {
         textToUpdate = text;
     }
-    
+
 
     if (value != undefined && regex) {
         textToUpdate = regex
