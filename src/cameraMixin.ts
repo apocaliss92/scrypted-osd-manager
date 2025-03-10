@@ -1,9 +1,9 @@
 import sdk, { Battery, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Sensors, Setting, Settings, SettingValue, Sleep, TemperatureUnit, VideoTextOverlays } from "@scrypted/sdk";
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
-import OsdManagerProvider from "./main";
-import { CameraOverlay, convertSettingsToStorageSettings, formatValue, getOverlay, getOverlayKeys, getOverlaySettings, getTemplateKeys, getEntryText, getLockText, ListenersMap, ListenerType, osdManagerPrefix, Overlay, OverlayType, parseOverlayData, pluginEnabledFilter, getStrippedNativeId } from "./utils";
 import { Unit, UnitConverter } from "../../scrypted-homeassistant/src/unitConverter";
+import OsdManagerProvider from "./main";
+import { CameraOverlay, convertSettingsToStorageSettings, formatValue, getEntryText, getLockText, getOverlay, getOverlayKeys, getOverlaySettings, getStrippedNativeId, getTemplateKeys, ListenerType, osdManagerPrefix, OverlayType, parseOverlayData, pluginEnabledFilter } from "./utils";
 
 export type CameraType = ScryptedDeviceBase & VideoTextOverlays & Settings & Sleep & Battery;
 
@@ -12,6 +12,13 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         lastFace: {
             type: 'string',
             hide: true,
+        },
+        refreshDataInterval: {
+            title: 'Refresh frequency in seconds',
+            description: 'Define how often the layers should refresh',
+            type: 'number',
+            defaultValue: 5,
+            onPut: async () => await this.refreshSettings()
         },
         enableDebug: {
             title: 'Enable debug',
@@ -36,9 +43,10 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
 
     killed: boolean;
     overlays: CameraOverlay[] = [];
-    listenersMap: ListenersMap = {};
+    refreshInterval: NodeJS.Timeout;
     cameraDevice: CameraType;
     logger: Console;
+    settingsLogged: Record<string, boolean> = {};
 
     constructor(options: SettingsMixinDeviceOptions<any>, private plugin: OsdManagerProvider) {
         super(options);
@@ -51,10 +59,8 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     removeListeners() {
         const logger = this.getLogger();
         try {
-            Object.values(this.listenersMap).forEach(({ listener, interval }) => {
-                listener && listener.removeListener();
-                interval && clearInterval(interval);
-            });
+            this.refreshInterval && clearInterval(this.refreshInterval);
+            this.settingsLogged = {};
         } catch (e) {
             logger.error('Error in removeListeners', e);
         }
@@ -169,7 +175,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         continue;
                     }
 
-                    const { device, type, regex, maxDecimals, sensorId, sensorName, unit, text, template, updateFrequency, maxCharacters } = getOverlay({
+                    const { device, type, regex, maxDecimals, sensorId, sensorName, unit, text, template, maxCharacters } = getOverlay({
                         overlayId,
                         storageSettings: this.plugin.mixinsMap[deviceId].storageSettings
                     });
@@ -182,7 +188,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                         sensorNameKey,
                         unitKey,
                         templateKey,
-                        updateFrequencyKey,
                         textKey,
                         maxCharactersKey
                     } = getOverlayKeys(overlayId);
@@ -194,7 +199,6 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     await this.putMixinSetting(sensorNameKey, sensorName);
                     await this.putMixinSetting(unitKey, unit);
                     await this.putMixinSetting(templateKey, template);
-                    await this.putMixinSetting(updateFrequencyKey, String(updateFrequency));
                     await this.putMixinSetting(textKey, text);
                     await this.putMixinSetting(maxDecimalsKey, String(maxDecimals));
                     await this.putMixinSetting(maxCharactersKey, String(maxCharacters));
@@ -361,138 +365,113 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     }
 
     async start() {
-        const logger = this.getLogger();
-        for (const cameraOverlay of this.overlays) {
-            const overlayId = cameraOverlay.id;
-            const overlay = getOverlay({
-                overlayId,
-                storageSettings: this.storageSettings
-            });
+        const funct = async () => {
+            const logger = this.getLogger();
+            for (const cameraOverlay of this.overlays) {
+                const overlayId = cameraOverlay.id;
+                const overlay = getOverlay({
+                    overlayId,
+                    storageSettings: this.storageSettings
+                });
 
-            const overlayType = overlay.type;
-            let listenerType: ListenerType;
-            let listenInterface: ScryptedInterface | string;
-            let deviceId: string;
+                const overlayType = overlay.type;
+                let listenerType: ListenerType;
+                let listenInterface: ScryptedInterface | string;
+                let deviceId: string;
 
-            if (overlayType === OverlayType.Device) {
-                const realDevice = sdk.systemManager.getDeviceById<Sensors>(overlay.device);
+                if (overlayType === OverlayType.Device) {
+                    const realDevice = sdk.systemManager.getDeviceById<Sensors>(overlay.device);
 
-                if (realDevice) {
-                    if (realDevice.interfaces.includes(ScryptedInterface.Sensors)) {
-                        if (overlay.sensorName) {
-                            const sensorId = overlay.sensorId ?? Object.entries(realDevice.sensors)
-                                .find(([_, { name }]) => name === overlay.sensorName)?.[0];
+                    if (realDevice) {
+                        if (realDevice.interfaces.includes(ScryptedInterface.Sensors)) {
+                            if (overlay.sensorName) {
+                                const sensorId = overlay.sensorId ?? Object.entries(realDevice.sensors)
+                                    .find(([_, { name }]) => name === overlay.sensorName)?.[0];
 
-                            listenerType = ListenerType.Sensors;
-                            listenInterface = sensorId;
+                                listenerType = ListenerType.Sensors;
+                                listenInterface = sensorId;
+                                deviceId = overlay.device;
+                            }
+                        } else if (realDevice.interfaces.includes(ScryptedInterface.Thermometer)) {
+                            listenerType = ListenerType.Temperature;
+                            listenInterface = ScryptedInterface.Thermometer;
+                            deviceId = overlay.device;
+                        } else if (realDevice.interfaces.includes(ScryptedInterface.HumiditySensor)) {
+                            listenerType = ListenerType.Humidity;
+                            listenInterface = ScryptedInterface.HumiditySensor;
+                            deviceId = overlay.device;
+                        } else if (realDevice.interfaces.includes(ScryptedInterface.Lock)) {
+                            listenerType = ListenerType.Lock;
+                            listenInterface = ScryptedInterface.Lock;
+                            deviceId = overlay.device;
+                        } else if (realDevice.interfaces.includes(ScryptedInterface.EntrySensor)) {
+                            listenerType = ListenerType.Entry;
+                            listenInterface = ScryptedInterface.EntrySensor;
                             deviceId = overlay.device;
                         }
-                    } else if (realDevice.interfaces.includes(ScryptedInterface.Thermometer)) {
-                        listenerType = ListenerType.Temperature;
-                        listenInterface = ScryptedInterface.Thermometer;
-                        deviceId = overlay.device;
-                    } else if (realDevice.interfaces.includes(ScryptedInterface.HumiditySensor)) {
-                        listenerType = ListenerType.Humidity;
-                        listenInterface = ScryptedInterface.HumiditySensor;
-                        deviceId = overlay.device;
-                    } else if (realDevice.interfaces.includes(ScryptedInterface.Lock)) {
-                        listenerType = ListenerType.Lock;
-                        listenInterface = ScryptedInterface.Lock;
-                        deviceId = overlay.device;
-                    } else if (realDevice.interfaces.includes(ScryptedInterface.EntrySensor)) {
-                        listenerType = ListenerType.Entry;
-                        listenInterface = ScryptedInterface.EntrySensor;
-                        deviceId = overlay.device;
+                    } else {
+                        logger.log(`Device ${overlay.device} not found`);
                     }
-                } else {
-                    logger.log(`Device ${overlay.device} not found`);
+                } else if (overlayType === OverlayType.FaceDetection) {
+                    listenerType = ListenerType.Face;
+                    listenInterface = ScryptedInterface.ObjectDetector;
+                    deviceId = this.id;
+                } else if (overlayType === OverlayType.BatteryLeft) {
+                    listenerType = ListenerType.Battery;
+                    listenInterface = ScryptedInterface.Battery;
+                    deviceId = this.id;
                 }
-            } else if (overlayType === OverlayType.FaceDetection) {
-                listenerType = ListenerType.Face;
-                listenInterface = ScryptedInterface.ObjectDetector;
-                deviceId = this.id;
-            } else if (overlayType === OverlayType.BatteryLeft) {
-                listenerType = ListenerType.Battery;
-                listenInterface = ScryptedInterface.Battery;
-                deviceId = this.id;
-            }
 
-            logger.log(`Settings for overlay ${overlayId}: ${JSON.stringify({ overlay, overlayType, listenerType, listenInterface, deviceId })}`);
-            this.listenersMap[overlayId]?.listener && this.listenersMap[overlayId].listener.removeListener();
-            this.listenersMap[overlayId]?.interval && clearInterval(this.listenersMap[overlayId].interval);
+                if (!this.settingsLogged[overlayId]) {
+                    logger.log(`Settings for overlay ${overlayId}: ${JSON.stringify({ overlay, overlayType, listenerType, listenInterface, deviceId })}`);
+                    this.settingsLogged[overlayId] = true;
+                }
 
-            if (listenerType) {
-                if (listenInterface && deviceId) {
-                    const realDevice = sdk.systemManager.getDeviceById<ScryptedDeviceBase>(deviceId);
-                    logger.log(`Overlay ${overlayId}: starting device ${realDevice.name} listener for type ${listenerType} on interface ${listenInterface}`);
-                    const update = async (data: any) => await this.updateOverlayData({
-                        listenInterface,
+                if (listenerType) {
+                    if (listenInterface && deviceId) {
+                        const realDevice = sdk.systemManager.getDeviceById<ScryptedDeviceBase>(deviceId);
+                        const update = async (data: any) => await this.updateOverlayData({
+                            listenInterface,
+                            overlayId,
+                            data,
+                            listenerType,
+                        });
+
+                        if (listenerType === ListenerType.Sensors) {
+                            update(realDevice.sensors?.[listenInterface]);
+                        } else if (listenInterface === ScryptedInterface.Thermometer) {
+                            update(realDevice.temperature);
+                        } else if (listenInterface === ScryptedInterface.HumiditySensor) {
+                            update(realDevice.humidity);
+                        } else if (listenInterface === ScryptedInterface.Lock) {
+                            update(realDevice.lockState);
+                        } else if (listenInterface === ScryptedInterface.EntrySensor) {
+                            update(realDevice.entryOpen);
+                        } else if (listenInterface === ScryptedInterface.Battery) {
+                            update(realDevice.batteryLevel);
+                        } else if (listenInterface === ScryptedInterface.ObjectDetector) {
+                            update({ detections: [{ className: 'face', label: this.storageSettings.values.lastFace || '-' }] } as ObjectsDetected);
+                        }
+                    }
+                } else if (overlayType === OverlayType.Text) {
+                    this.updateOverlayData({
                         overlayId,
-                        data,
                         listenerType,
+                        data: overlay.text,
                     });
-                    const newListener = realDevice.listen(listenInterface, async (_, __, data) => {
-                        await update(data);
-                    });
-
-                    if (listenerType === ListenerType.Sensors) {
-                        update(realDevice.sensors?.[listenInterface]);
-                    } else if (listenInterface === ScryptedInterface.Thermometer) {
-                        update(realDevice.temperature);
-                    } else if (listenInterface === ScryptedInterface.HumiditySensor) {
-                        update(realDevice.humidity);
-                    } else if (listenInterface === ScryptedInterface.Lock) {
-                        update(realDevice.lockState);
-                    } else if (listenInterface === ScryptedInterface.EntrySensor) {
-                        update(realDevice.entryOpen);
-                    } else if (listenInterface === ScryptedInterface.Battery) {
-                        update(realDevice.batteryLevel);
-                    } else if (listenInterface === ScryptedInterface.ObjectDetector) {
-                        update({ detections: [{ className: 'face', label: this.storageSettings.values.lastFace || '-' }] } as ObjectsDetected);
-                    }
-
-                    this.listenersMap[overlayId] = {
+                } else if (overlayType === OverlayType.Disabled) {
+                    this.updateOverlayData({
+                        overlayId,
                         listenerType,
-                        device: overlay.device,
-                        listener: newListener
-                    };
-                }
-            } else if (overlayType === OverlayType.Text) {
-                this.updateOverlayData({
-                    overlayId,
-                    listenerType,
-                    data: overlay.text,
-                });
-            } else if (overlayType === OverlayType.Disabled) {
-                this.updateOverlayData({
-                    overlayId,
-                    listenerType,
-                    data: '',
-                });
-            } else if (overlayType === OverlayType.Template && overlay.template) {
-                logger.log(`Overlay ${overlayId}: interval to update the template ${overlay.template}`);
-
-                const newListener = setInterval(async () => {
+                        data: '',
+                    });
+                } else if (overlayType === OverlayType.Template && overlay.template) {
                     await this.updateOverlayDataFromTemplate({ overlayId, template: overlay.template });
-                }, overlay.updateFrequency * 1000)
-
-                this.listenersMap[overlayId] = {
-                    listenerType: ListenerType.Interval,
-                    interval: newListener
-                };
+                }
             }
-
-            // if (this.cameraDevice.interfaces.includes(ScryptedInterface.Sleep)) {
-            //     const realDevice = sdk.systemManager.getDeviceById<ScryptedDeviceBase>(this.id);
-            //     this.listenersMap[ScryptedInterface.Sleep] = {
-            //         listener: realDevice.listen(ScryptedInterface.Sleep, async (_, __, data) => {
-            //             this.console.log('Camera woke up, updating ovelays', data);
-            //         }),
-            //         listenerType: ListenerType.Battery,
-            //         device: this.id
-            //     }
-            // }
         }
+
+        this.refreshInterval = setInterval(funct, this.storageSettings.values.refreshDataInterval * 1000);
     }
 
     async init() {

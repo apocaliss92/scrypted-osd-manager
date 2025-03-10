@@ -31,7 +31,6 @@ export interface Overlay {
     sensorId?: string;
     sensorName?: string;
     template?: string;
-    updateFrequency?: number;
 }
 
 export enum ListenerType {
@@ -45,13 +44,6 @@ export enum ListenerType {
     Sensors = 'Sensors',
     Interval = 'Interval',
 }
-
-export type ListenersMap = Record<string, {
-    listenerType: ListenerType,
-    listener?: EventListenerRegister,
-    interval?: NodeJS.Timeout,
-    device?: string
-}>;
 
 export const getFriendlyTitle = (props: {
     rawTitle: string,
@@ -110,7 +102,6 @@ export const getOverlayKeys = (overlayId: string) => {
     const sensorIdKey = `overlay:${overlayId}:sensorId`;
     const sensorNameKey = `overlay:${overlayId}:sensorName`;
     const unitKey = `overlay:${overlayId}:unit`;
-    const updateFrequencyKey = `overlay:${overlayId}:updateFrequency`;
 
     return {
         currentTextKey,
@@ -124,7 +115,6 @@ export const getOverlayKeys = (overlayId: string) => {
         sensorNameKey,
         templateKey,
         unitKey,
-        updateFrequencyKey,
     }
 }
 
@@ -157,7 +147,6 @@ export const getOverlaySettings = (props: {
             sensorNameKey,
             unitKey,
             templateKey,
-            updateFrequencyKey,
         } = getOverlayKeys(overlay.id);
 
         if (overlay.readonly) {
@@ -211,14 +200,6 @@ export const getOverlaySettings = (props: {
                     choices: templates,
                     onPut: onSettingUpdated
                 },
-                {
-                    key: updateFrequencyKey,
-                    title: 'Update frequency in seconds',
-                    type: 'number',
-                    subgroup: overlayName,
-                    defaultValue: 5,
-                    onPut: onSettingUpdated
-                }
             );
             continue;
         }
@@ -336,7 +317,6 @@ export const getOverlay = (props: {
         sensorIdKey,
         sensorNameKey,
         unitKey,
-        updateFrequencyKey,
         templateKey,
     } = getOverlayKeys(overlayId);
 
@@ -350,7 +330,6 @@ export const getOverlay = (props: {
     const sensorId = storageSettings.values[sensorIdKey];
     const sensorName = storageSettings.values[sensorNameKey];
     const unit = storageSettings.values[unitKey];
-    const updateFrequency = storageSettings.values[updateFrequencyKey];
     const template = storageSettings.values[templateKey];
 
     return {
@@ -365,7 +344,6 @@ export const getOverlay = (props: {
         sensorName,
         unit,
         template,
-        updateFrequency,
     };
 }
 
