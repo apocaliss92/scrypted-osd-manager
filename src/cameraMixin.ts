@@ -3,7 +3,7 @@ import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/s
 import { StorageSettings, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
 import { Unit, UnitConverter } from "../../scrypted-homeassistant/src/unitConverter";
 import OsdManagerProvider from "./main";
-import { CameraOverlay, convertSettingsToStorageSettings, formatValue, getEntryText, getLockText, getOverlay, getOverlayKeys, getOverlaySettings, getStrippedNativeId, getTemplateKeys, ListenerType, osdManagerPrefix, OverlayType, parseOverlayData, pluginEnabledFilter } from "./utils";
+import { CameraOverlay, convertSettingsToStorageSettings, formatValue, getBinaryText, getEntryText, getLockText, getOverlay, getOverlayKeys, getOverlaySettings, getStrippedNativeId, getTemplateKeys, ListenerType, osdManagerPrefix, OverlayType, parseOverlayData, pluginEnabledFilter } from "./utils";
 
 export type CameraType = ScryptedDeviceBase & VideoTextOverlays & Settings & Sleep & Battery;
 
@@ -296,21 +296,17 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 if (unit === TemperatureUnit.F) {
                     value = value * 9 / 5 + 32;
                 }
-            }
-            else if (device.interfaces.includes(ScryptedInterface.HumiditySensor)) {
+            } else if (device.interfaces.includes(ScryptedInterface.HumiditySensor)) {
                 const sensorKeys = getSensorKeys('humidity');
                 maxDecimals = this.plugin.storageSettings.getItem(sensorKeys.maxDecimalsKey) ?? 1;
                 value = device.humidity;
                 unit = '%';
-            }
-            else if (device.interfaces.includes(ScryptedInterface.EntrySensor)) {
+            } else if (device.interfaces.includes(ScryptedInterface.EntrySensor)) {
                 value = getEntryText(device.entryOpen, this.plugin);
-            }
-            else if (device.interfaces.includes(ScryptedInterface.Lock)) {
+            } else if (device.interfaces.includes(ScryptedInterface.Lock)) {
                 value = getLockText(device.lockState, this.plugin);
-            }
-            else if (device.interfaces.includes(ScryptedInterface.BinarySensor)) {
-                value = device.binaryState ? 'On' : 'Off';
+            } else if (device.interfaces.includes(ScryptedInterface.BinarySensor)) {
+                value = getBinaryText(device.lockState, this.plugin);
             }
 
             if (typeof value === 'number') {
@@ -408,6 +404,10 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                             listenerType = ListenerType.Entry;
                             listenInterface = ScryptedInterface.EntrySensor;
                             deviceId = overlay.device;
+                        } else if (realDevice.interfaces.includes(ScryptedInterface.BinarySensor)) {
+                            listenerType = ListenerType.Binary;
+                            listenInterface = ScryptedInterface.BinarySensor;
+                            deviceId = overlay.device;
                         }
                     } else {
                         logger.log(`Device ${overlay.device} not found`);
@@ -447,6 +447,8 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                             update(realDevice.lockState);
                         } else if (listenInterface === ScryptedInterface.EntrySensor) {
                             update(realDevice.entryOpen);
+                        } else if (listenInterface === ScryptedInterface.BinarySensor) {
+                            update(realDevice.binaryState);
                         } else if (listenInterface === ScryptedInterface.Battery) {
                             update(realDevice.batteryLevel);
                         } else if (listenInterface === ScryptedInterface.ObjectDetector) {

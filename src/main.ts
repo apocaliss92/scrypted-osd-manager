@@ -7,31 +7,6 @@ import { UnitConverter } from "../../scrypted-homeassistant/src/unitConverter";
 
 export default class OsdManagerProvider extends ScryptedDeviceBase implements MixinProvider, Settings {
     initStorage: StorageSettingsDict<string> = {
-        lockText: {
-            title: 'Locked State Text',
-            type: 'string',
-            defaultValue: 'Locked',
-        },
-        unlockText: {
-            title: 'Unlocked State Text',
-            type: 'string',
-            defaultValue: 'Unlocked',
-        },
-        openText: {
-            title: 'Open State Text',
-            type: 'string',
-            defaultValue: 'Open',
-        },
-        closedText: {
-            title: 'Closed State Text',
-            type: 'string',
-            defaultValue: 'Closed',
-        },
-        jammedText: {
-            title: 'Jammed State Text',
-            type: 'string',
-            defaultValue: 'Jammed',
-        },
         templates: {
             title: 'Templates',
             description: 'Define templates from multiple devices',
@@ -41,6 +16,36 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
             choices: [],
             combobox: true,
             onPut: () => this.refreshSettings()
+        },
+        lockText: {
+            title: 'Locked State Text',
+            type: 'string',
+            defaultValue: 'Locked',
+            group: 'Texts'
+        },
+        unlockText: {
+            title: 'Unlocked State Text',
+            type: 'string',
+            defaultValue: 'Unlocked',
+            group: 'Texts'
+        },
+        openText: {
+            title: 'Open State Text',
+            type: 'string',
+            defaultValue: 'Open',
+            group: 'Texts'
+        },
+        closedText: {
+            title: 'Closed State Text',
+            type: 'string',
+            defaultValue: 'Closed',
+            group: 'Texts'
+        },
+        jammedText: {
+            title: 'Jammed State Text',
+            type: 'string',
+            defaultValue: 'Jammed',
+            group: 'Texts'
         },
     };
     storageSettings = new StorageSettings(this, this.initStorage);
@@ -94,7 +99,6 @@ export default class OsdManagerProvider extends ScryptedDeviceBase implements Mi
                         type: 'string',
                         group,
                         choices: sensorIds,
-                        immediate: true,
                         combobox: true,
                         multiple: true,
                         onPut: this.refreshSettings,

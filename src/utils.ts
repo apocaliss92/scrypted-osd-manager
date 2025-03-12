@@ -4,7 +4,7 @@ import { UnitConverter } from '../../scrypted-homeassistant/src/unitConverter';
 import { CameraType } from "./cameraMixin";
 import OsdManagerProvider from "./main";
 
-export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}','${ScryptedInterface.Lock}','${ScryptedInterface.EntrySensor}','${ScryptedInterface.Sensors}'].some(elem => interfaces.includes(elem))`;
+export const deviceFilter = `['${ScryptedInterface.Thermometer}','${ScryptedInterface.HumiditySensor}','${ScryptedInterface.Lock}','${ScryptedInterface.EntrySensor}','${ScryptedInterface.BinarySensor}','${ScryptedInterface.Sensors}'].some(elem => interfaces.includes(elem))`;
 export const pluginEnabledFilter = `interfaces.includes('${ScryptedInterface.VideoTextOverlays}')`;
 export const osdManagerPrefix = 'osdManager';
 
@@ -43,6 +43,7 @@ export enum ListenerType {
     Entry = 'Entry',
     Sensors = 'Sensors',
     Interval = 'Interval',
+    Binary = 'Binary',
 }
 
 export const getFriendlyTitle = (props: {
@@ -358,6 +359,10 @@ export const getEntryText = (data: any, plugin: OsdManagerProvider): string => {
         : (data ? plugin.storageSettings.values.openText : plugin.storageSettings.values.closedText);
 };
 
+export const getBinaryText = (data: any, plugin: OsdManagerProvider): string => {
+    return data ? plugin.storageSettings.values.openText : plugin.storageSettings.values.closedText;
+};
+
 export const getLockText = (data: any, plugin: OsdManagerProvider): string => {
     return data === 'jammed'
         ? plugin.storageSettings.values.jammedText
@@ -399,6 +404,8 @@ export const parseOverlayData = (props: {
         value = getLockText(data, plugin);
     } else if (listenerType === ListenerType.Entry) {
         value = getEntryText(data, plugin);
+    } else if (listenerType === ListenerType.Binary) {
+        value = getBinaryText(data, plugin);
     } else if (listenerType === ListenerType.Sensors) {
         if (typeof data === 'number') {
             unit = overlay.unit;
