@@ -1,4 +1,4 @@
-import sdk, { Battery, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Sensors, Setting, Settings, SettingValue, Sleep, TemperatureUnit, VideoTextOverlays } from "@scrypted/sdk";
+import sdk, { Battery, EventListenerRegister, ObjectsDetected, ScryptedDeviceBase, ScryptedInterface, Sensors, Setting, Settings, SettingValue, Sleep, TemperatureUnit, VideoTextOverlays } from "@scrypted/sdk";
 import { SettingsMixinDeviceBase, SettingsMixinDeviceOptions } from "@scrypted/sdk/settings-mixin";
 import { StorageSettings, StorageSettingsDict } from "@scrypted/sdk/storage-settings";
 import { Unit, UnitConverter } from "../../scrypted-homeassistant/src/unitConverter";
@@ -47,6 +47,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     cameraDevice: CameraType;
     logger: Console;
     settingsLogged: Record<string, boolean> = {};
+    detectionListener: EventListenerRegister;
 
     constructor(options: SettingsMixinDeviceOptions<any>, private plugin: OsdManagerProvider) {
         super(options);
@@ -60,6 +61,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
         const logger = this.getLogger();
         try {
             this.refreshInterval && clearInterval(this.refreshInterval);
+            this.detectionListener && this.detectionListener.removeListener();
             this.settingsLogged = {};
         } catch (e) {
             logger.error('Error in removeListeners', e);
@@ -93,7 +95,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
 
     async refreshSettings() {
         const logger = this.getLogger();
-        logger.log('Refreshing settings');
+        logger.debug('Refreshing settings');
         await this.getOverlayData();
 
         const dynamicSettings = getOverlaySettings({
@@ -363,6 +365,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     async start() {
         const funct = async () => {
             const logger = this.getLogger();
+            let anyObjectDetection = false;
             for (const cameraOverlay of this.overlays) {
                 const overlayId = cameraOverlay.id;
                 const overlay = getOverlay({
@@ -416,6 +419,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     listenerType = ListenerType.Face;
                     listenInterface = ScryptedInterface.ObjectDetector;
                     deviceId = this.id;
+                    anyObjectDetection = true;
                 } else if (overlayType === OverlayType.BatteryLeft) {
                     listenerType = ListenerType.Battery;
                     listenInterface = ScryptedInterface.Battery;
@@ -470,6 +474,18 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 } else if (overlayType === OverlayType.Template && overlay.template) {
                     await this.updateOverlayDataFromTemplate({ overlayId, template: overlay.template });
                 }
+            }
+
+            if (anyObjectDetection) {
+                this.detectionListener = sdk.systemManager.listenDevice(this.id, ScryptedInterface.ObjectDetector, async (_, __, data) => {
+                    const label = (data as ObjectsDetected)?.detections?.find(det => det.className === 'face')?.label;
+                    if (label) {
+                        this.storageSettings.values.lastFace = label;
+                    }
+                });
+            } else {
+                this.detectionListener && this.detectionListener.removeListener();
+                this.detectionListener = undefined;
             }
         }
 
