@@ -348,7 +348,7 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 textToUpdate
             })}`);
 
-            if (listenerType === ListenerType.Face) {
+            if (listenerType === ListenerType.Face && this.storageSettings.values.lastFace !== value) {
                 this.storageSettings.putSetting('lastFace', value);
             }
 
