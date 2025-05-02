@@ -480,8 +480,8 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                 if (!this.detectionListener) {
                     this.detectionListener = sdk.systemManager.listenDevice(this.id, ScryptedInterface.ObjectDetector, async (_, __, data) => {
                         const label = (data as ObjectsDetected)?.detections?.find(det => det.className === 'face')?.label;
-                        if (label) {
-                            this.storageSettings.values.lastFace = label;
+                        if (label && label !== this.storageSettings.values.lastFace) {
+                            this.storageSettings.putSetting('lastFace', label);
                         }
                     });
                 }
