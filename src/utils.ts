@@ -420,7 +420,6 @@ export const parseOverlayData = (props: {
         textToUpdate = text;
     }
 
-
     if (value != undefined && regex) {
         textToUpdate = regex
             .replace('${value}', value ?? '')
@@ -438,9 +437,13 @@ export const convertSettingsToStorageSettings = async (props: {
     const { device, dynamicSettings, initStorage } = props;
 
     const onPutToRestore: Record<string, any> = {};
+    const hiddenToRestore: Record<string, StorageSetting> = {};
     Object.entries(initStorage).forEach(([key, setting]) => {
         if (setting.onPut) {
             onPutToRestore[key] = setting.onPut;
+        }
+        if (setting.hide) {
+            hiddenToRestore[key] = { ...setting };
         }
     });
 
@@ -449,6 +452,10 @@ export const convertSettingsToStorageSettings = async (props: {
     settings.push(...dynamicSettings);
 
     const deviceSettings: StorageSettingsDict<string> = {};
+
+    Object.entries(hiddenToRestore).forEach(([key, setting]) => {
+        deviceSettings[key] = { ...setting };
+    });
 
     for (const setting of settings) {
         const { value, key, onPut, ...rest } = setting;

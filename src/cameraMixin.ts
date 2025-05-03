@@ -9,10 +9,6 @@ export type CameraType = ScryptedDeviceBase & VideoTextOverlays & Settings & Sle
 
 export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implements Settings {
     initStorage: StorageSettingsDict<string> = {
-        lastFace: {
-            type: 'string',
-            hide: true,
-        },
         refreshDataInterval: {
             title: 'Refresh frequency in seconds',
             description: 'Define how often the layers should refresh',
@@ -32,6 +28,11 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
             deviceFilter: pluginEnabledFilter,
             immediate: true,
             onPut: async (_, value) => await this.duplicateFromDevice(value)
+        },
+        lastFace: {
+            title: 'Last face detected',
+            type: 'html',
+            hide: true,
         },
         refreshOverlays: {
             title: 'Get data from camera',
@@ -124,14 +125,14 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
     async putSetting(key: string, value: SettingValue): Promise<void> {
         const [group, ...rest] = key.split(':');
         if (group === osdManagerPrefix) {
-            this.storageSettings.putSetting(rest.join(':'), value);
+            await this.storageSettings.putSetting(rest.join(':'), value);
         } else {
             super.putSetting(key, value);
         }
     }
 
     async putMixinSetting(key: string, value: string) {
-        this.storageSettings.putSetting(key, value);
+        await this.storageSettings.putSetting(key, value);
     }
 
     async getOverlayData() {
@@ -336,21 +337,13 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
 
         try {
             const overlay = getOverlay({ overlayId, storageSettings: this.storageSettings });
-            const { textToUpdate, value } = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin, logger });
-
-            if (value == undefined && listenerType === ListenerType.Face) {
-                return;
-            }
+            const { textToUpdate } = parseOverlayData({ data, listenerType, overlay, plugin: this.plugin, logger });
 
             logger.debug(`Setting overlay data ${overlayId}: ${JSON.stringify({
                 listenerType,
                 data,
                 textToUpdate
             })}`);
-
-            if (listenerType === ListenerType.Face && this.storageSettings.values.lastFace !== value) {
-                this.storageSettings.putSetting('lastFace', value);
-            }
 
             if (textToUpdate) {
                 await this.cameraDevice.setVideoTextOverlay(overlayId, { text: this.limitText({ overlayId, text: textToUpdate }) });
@@ -481,7 +474,8 @@ export default class OsdManagerMixin extends SettingsMixinDeviceBase<any> implem
                     this.detectionListener = sdk.systemManager.listenDevice(this.id, ScryptedInterface.ObjectDetector, async (_, __, data) => {
                         const label = (data as ObjectsDetected)?.detections?.find(det => det.className === 'face')?.label;
                         if (label && label !== this.storageSettings.values.lastFace) {
-                            this.storageSettings.putSetting('lastFace', label);
+                            logger.log('New face found', label);
+                            await this.putMixinSetting('lastFace', label);
                         }
                     });
                 }
